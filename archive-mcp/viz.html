@@ -1,0 +1,1458 @@
+
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<title>记忆网络 · 我们曾经</title>
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { background: #faf7f2; font-family: "Noto Serif SC", "Songti SC", serif; display: flex; height: 100vh; overflow: hidden; }
+  /* ── 左栏 ── */
+  #side {
+    width: 320px; min-width: 280px; max-width: 400px;
+    border-right: 1px solid #e8dfd4; background: #f7f2ec;
+    display: flex; flex-direction: column; overflow: hidden;
+  }
+  #sideHead { padding: 14px 16px 10px; border-bottom: 1px solid #e8dfd4; }
+  #sideHead h1 { font-size: 18px; color: #5b524a; letter-spacing: 3px; font-weight: 600; }
+  #sideHead .sub { font-size: 11px; color: #a89f94; letter-spacing: 2px; margin-top: 2px; }
+  #sideHead .stats { font-size: 10px; color: #8d8278; font-family: "Courier New", monospace; margin-top: 6px; letter-spacing: 0.5px; }
+  #sections { flex: 1; overflow-y: auto; }
+  .sec { padding: 10px 14px; border-bottom: 1px solid #efe8de; }
+  .sec-title { font-size: 12px; color: #8d7f6d; letter-spacing: 2px; margin-bottom: 8px; display: flex; align-items: baseline; gap: 6px; }
+  .sec-title .cnt { font-size: 10px; color: #b0a69b; font-family: "Courier New", monospace; }
+  /* 社区列表 */
+  .comm-item { display: flex; align-items: center; gap: 8px; padding: 5px 8px; border-radius: 8px; cursor: pointer; font-size: 12.5px; color: #5b524a; }
+  .comm-item:hover { background: #efe8de; }
+  .comm-item.on { background: #e8dfd4; }
+  .comm-item .dot { width: 10px; height: 10px; border-radius: 5px; flex-shrink: 0; }
+  .comm-item .cn { font-size: 10px; color: #b0a69b; margin-left: auto; font-family: "Courier New", monospace; }
+  /* 搜索 + 事件列表 */
+  #search { width: 100%; padding: 6px 10px; border: 1px solid #d8cdbf; border-radius: 8px; background: #fffdfa; font-size: 12px; color: #4a423a; margin-bottom: 6px; outline: none; font-family: inherit; }
+  .ev-item { padding: 5px 8px; border-radius: 8px; cursor: pointer; font-size: 12px; color: #6e645a; display: flex; align-items: center; gap: 6px; }
+  .ev-item:hover { background: #efe8de; }
+  .ev-item.on { background: #e8dfd4; }
+  .ev-item .dot { width: 8px; height: 8px; border-radius: 4px; flex-shrink: 0; }
+  .ev-item .t { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .ev-item .d { font-size: 10px; color: #b0a69b; font-family: "Courier New", monospace; }
+  .ev-list { max-height: 260px; overflow-y: auto; }
+  /* 详情面板 */
+  #detail { display: none; background: #fffdfa; border: 1px solid #e0d6c8; border-radius: 10px; padding: 10px 12px; }
+  #detail .d-title { font-size: 13.5px; font-weight: 600; color: #4a423a; margin-bottom: 4px; line-height: 1.5; }
+  #detail .d-meta { font-size: 11px; color: #a89f94; font-family: "Courier New", monospace; margin-bottom: 5px; }
+  #detail .d-comm { font-size: 11px; color: #8d7f6d; margin-bottom: 6px; }
+  #detail .d-sum { font-size: 12px; color: #6e645a; line-height: 1.7; }
+  #detail .d-nbr { margin-top: 8px; padding-top: 6px; border-top: 1px dashed #d8cdbf; }
+  #detail .d-nbr-title { font-size: 11px; color: #8d7f6d; margin-bottom: 4px; }
+  #detail .nbr-item { font-size: 11.5px; color: #6e645a; padding: 2px 0; display: flex; gap: 5px; align-items: center; cursor: pointer; }
+  #detail .nbr-item:hover { color: #4a423a; }
+  /* ── 右栏(图) ── */
+  #main { flex: 1; display: flex; flex-direction: column; min-width: 0; }
+  #legendBar { padding: 8px 16px 4px; border-bottom: 1px solid #efe8de; display: flex; flex-wrap: wrap; gap: 4px 12px; align-items: center; }
+  #commLegend { display: flex; flex-wrap: wrap; gap: 4px 10px; }
+  .lg-item { display: flex; align-items: center; gap: 5px; font-size: 11.5px; color: #6e645a; cursor: pointer; padding: 2px 6px; border-radius: 10px; }
+  .lg-item:hover { background: #efe8de; }
+  .lg-item .dot { width: 10px; height: 10px; border-radius: 5px; }
+  .lg-item .cnt { font-size: 9.5px; color: #b0a69b; font-family: "Courier New", monospace; }
+  .edge-legend { margin-left: auto; display: flex; gap: 12px; font-size: 10.5px; color: #8d8278; white-space: nowrap; }
+  .edge-legend span { display: flex; align-items: center; gap: 4px; }
+  .edge-legend i { width: 14px; height: 3px; display: inline-block; }
+  #chart { flex: 1; }
+  #tip { position: fixed; display: none; max-width: 300px; background: rgba(250,247,242,0.97); border: 1px solid #d8cdbf; border-radius: 8px; padding: 10px 12px; font-size: 12px; color: #5b524a; box-shadow: 0 4px 16px rgba(0,0,0,0.08); pointer-events: none; z-index: 10; line-height: 1.6; }
+  #tip .t-title { font-size: 13px; font-weight: 600; color: #4a423a; margin-bottom: 4px; }
+  #tip .t-link { margin-top: 5px; padding-top: 4px; border-top: 1px dashed #d8cdbf; color: #8d7f6d; }
+  /* ── 手动建边 + 重建社区 (2026-08-16) ── */
+  .link-slot { display: flex; align-items: center; gap: 6px; margin-bottom: 6px; }
+  .link-label { font-size: 10px; color: #b0a69b; width: 12px; flex-shrink: 0; }
+  .link-slot select { flex: 1; min-width: 0; padding: 5px 6px; border: 1px solid #d8cdbf; border-radius: 6px; background: #fffdfa; font-size: 11.5px; color: #4a423a; outline: none; font-family: inherit; }
+  #linkTypes { display: flex; gap: 10px; margin: 2px 0 8px; flex-wrap: wrap; }
+  #linkTypes label { font-size: 11.5px; color: #6e645a; cursor: pointer; display: flex; align-items: center; gap: 3px; }
+  #causalFields input, #causalFields textarea, #causalFields select { width: 100%; padding: 5px 8px; border: 1px solid #d8cdbf; border-radius: 6px; background: #fffdfa; font-size: 11.5px; color: #4a423a; margin-bottom: 5px; outline: none; font-family: inherit; resize: vertical; }
+  #linkBtn, #unlinkBtn { padding: 6px 12px; border-radius: 8px; border: 1px solid #c9b89a; background: #fffdfa; color: #8d7f6d; font-size: 12px; cursor: pointer; letter-spacing: 2px; font-family: inherit; }
+  #linkBtn:hover { background: #f2e9dc; }
+  #unlinkBtn { margin-left: 6px; border-color: #d8cdbf; color: #a89f94; }
+  #unlinkBtn:hover { background: #f2e9dc; }
+  .mini { margin-left: auto; padding: 2px 8px; font-size: 10px; border: 1px solid #d8cdbf; background: #fffdfa; color: #8d7f6d; border-radius: 8px; cursor: pointer; letter-spacing: 1px; font-family: inherit; flex-shrink: 0; }
+  .mini:hover { background: #efe8de; }
+  .mini:disabled { opacity: 0.5; cursor: default; }
+  /* ── 网络 / 四层事件模式 ── */
+  #modeSwitch { display: flex; border: 1px solid #d8cdbf; border-radius: 10px; overflow: hidden; flex-shrink: 0; margin-right: 10px; }
+  #modeSwitch button { padding: 3px 12px; font-size: 11px; border: none; background: #fffdfa; color: #a89f94; cursor: pointer; letter-spacing: 2px; font-family: inherit; }
+  #modeSwitch button.on { background: #8d7f6d; color: #faf7f2; }
+  #strataWrap { flex: 1; min-width: 0; overflow: hidden; position: relative; background: radial-gradient(ellipse at 50% 42%, #fffdfa 0%, #faf7f2 58%, #f2ebe2 100%); touch-action: none; }
+  #strataSvg { display: block; width: 100%; height: 100%; min-height: 0; cursor: grab; user-select: none; }
+  #strataSvg.dragging { cursor: grabbing; }
+  #strataHint { position: absolute; top: 12px; left: 16px; z-index: 4; padding: 6px 9px; background: rgba(250,247,242,0.76); border: 1px solid rgba(216,205,191,0.68); border-radius: 8px; font-size: 10px; color: #8d8278; letter-spacing: 0.6px; pointer-events: none; }
+  #strataControls { position: absolute; top: 12px; right: 16px; z-index: 5; display: flex; gap: 6px; }
+  #strataControls button { padding: 4px 9px; border: 1px solid #d8cdbf; border-radius: 9px; background: rgba(255,253,250,0.86); color: #8d7f6d; font: inherit; font-size: 10px; cursor: pointer; letter-spacing: 1px; }
+  #strataControls button:hover { background: #efe8de; }
+  #strataSvg .strata-selected { stroke: #4a423a !important; stroke-width: 2.4 !important; }
+  /* ── 点图选边 (2026-08-16): 先点「因」再点「果」 ── */
+  #pickBtn { padding: 3px 10px; font-size: 11px; border: 1px solid #c9b89a; background: #fffdfa; color: #8d7f6d; border-radius: 10px; cursor: pointer; letter-spacing: 1px; font-family: inherit; flex-shrink: 0; }
+  #pickBtn:hover { background: #f2e9dc; }
+  #pickBtn.on { background: #c9b89a; color: #fffdfa; }
+  #pickStatus { position: fixed; top: 52px; left: 50%; transform: translateX(-50%); display: none; background: rgba(74,66,58,0.92); color: #faf7f2; padding: 6px 14px; border-radius: 14px; font-size: 12px; letter-spacing: 1px; z-index: 15; max-width: 70vw; text-align: center; }
+  #linkPanel { position: fixed; top: 52px; right: 20px; width: 280px; max-width: calc(100vw - 40px); display: none; background: #fffdfa; border: 1px solid #e0d6c8; border-radius: 10px; padding: 12px; box-shadow: 0 6px 24px rgba(0,0,0,0.12); z-index: 15; }
+  #linkPanelTitle { font-size: 13px; font-weight: 600; color: #4a423a; margin-bottom: 8px; line-height: 1.5; }
+  #linkPanel input, #linkPanel textarea { width: 100%; padding: 6px 8px; border: 1px solid #d8cdbf; border-radius: 6px; background: #fffdfa; font-size: 12px; color: #4a423a; margin-bottom: 6px; outline: none; font-family: inherit; resize: vertical; }
+  .lp-btns { display: flex; gap: 6px; }
+  .lp-btns button { flex: 1; padding: 6px 0; border-radius: 8px; border: 1px solid #c9b89a; background: #fffdfa; color: #8d7f6d; font-size: 12px; cursor: pointer; letter-spacing: 2px; font-family: inherit; }
+  .lp-btns button:hover { background: #f2e9dc; }
+  #linkPanelCancel { border-color: #d8cdbf !important; color: #a89f94 !important; }
+  #toast { position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%); background: rgba(74,66,58,0.92); color: #faf7f2; padding: 8px 18px; border-radius: 16px; font-size: 12.5px; letter-spacing: 1px; z-index: 20; display: none; max-width: 80vw; text-align: center; }
+</style>
+</head>
+<body>
+
+<!-- ── 左栏 ── -->
+<aside id="side">
+  <div id="sideHead">
+    <h1>记忆网络</h1>
+    <div class="sub">我们曾经 · 事件与故事群</div>
+    <div class="stats" id="stats"></div>
+  </div>
+  <div id="sections">
+    <div class="sec">
+      <div class="sec-title">故事群 <span class="cnt" id="commCnt"></span><button id="rebuildCommBtn" class="mini" title="只重跑 Louvain 聚类，不动事件和边；已命名社区按成员匹配保留名字">重建社区</button></div>
+      <div id="commList"></div>
+    </div>
+    <div class="sec">
+      <div class="sec-title">事件 <span class="cnt" id="evCnt"></span></div>
+      <input id="search" placeholder="搜索事件标题…">
+      <div class="ev-list" id="evList"></div>
+    </div>
+    <div class="sec">
+      <div class="sec-title">详情</div>
+      <div id="detail"></div>
+    </div>
+    <div class="sec">
+      <div class="sec-title">手动关联</div>
+      <div class="link-slot"><span class="link-label">A</span><select id="linkA"></select></div>
+      <div class="link-slot"><span class="link-label">B</span><select id="linkB"></select></div>
+      <div id="linkTypes">
+        <label><input type="radio" name="etype" value="overlap" checked>同时段</label>
+        <label><input type="radio" name="etype" value="thematic">语义血缘</label>
+        <label><input type="radio" name="etype" value="causal">因果</label>
+      </div>
+      <div id="causalFields" style="display:none">
+        <input id="linkName" placeholder="连接名字（可选）">
+        <textarea id="linkReason" rows="2" placeholder="因果理由（必填）——为什么 A 是 B 的原因"></textarea>
+        <select id="linkDir">
+          <option value="">方向：不指定（互因果 / 未定）</option>
+          <option value="a→b">方向：A → B（A 是 B 的原因）</option>
+          <option value="b→a">方向：B → A（B 是 A 的原因）</option>
+        </select>
+      </div>
+      <div><button id="linkBtn">建立关联</button><button id="unlinkBtn">解除手动边</button></div>
+    </div>
+  </div>
+</aside>
+
+<!-- ── 右栏 ── -->
+<main id="main">
+  <div id="legendBar">
+    <div id="modeSwitch">
+      <button id="modeNet" class="on">网络</button>
+      <button id="modeStrata">时间轴</button>
+    </div>
+    <div id="commLegend"></div>
+    <div class="edge-legend">
+      <span><i style="background:#c9c2b8"></i>同时段</span>
+      <span><i style="background:#7fa3b0"></i>语义血缘</span>
+      <span><i style="background:#c9a86a"></i>因果关联</span>
+    </div>
+    <button id="pickBtn" title="点图选边：先点「因」节点，再点「果」节点，直接连因果边">点图选边</button>
+  </div>
+  <div id="chart"></div>
+  <div id="strataWrap" style="display:none">
+    <div id="strataHint">拖动横向滚动 · 滚轮缩放 · 点击事件展开关联</div>
+    <div id="strataControls"><button id="strataReset" title="缩放/平移后一键回到全时间范围">全览</button></div>
+    <svg id="strataSvg" xmlns="http://www.w3.org/2000/svg" aria-label="四层事件时间轴"></svg>
+  </div>
+</main>
+
+<div id="tip"></div>
+<div id="toast"></div>
+<div id="pickStatus"></div>
+<div id="linkPanel">
+  <div id="linkPanelTitle"></div>
+  <input id="linkNameF" placeholder="连接名字（可选）">
+  <textarea id="linkReasonF" rows="3" placeholder="因果理由（必填）——为什么前者是后者的原因"></textarea>
+  <div class="lp-btns">
+    <button id="linkPanelOk">建立</button>
+    <button id="linkPanelCancel">取消</button>
+  </div>
+</div>
+<script src="./echarts.min.js"></script>
+<script>
+// ── 数据运行时加载（/data 由服务器本地 SQLite 实时聚合，echarts 5.6.0 由服务器本地服务）──
+let DATA = null;
+(async () => {
+  const r = await fetch('./data');
+  if (!r.ok) {
+    document.getElementById('stats').textContent = '数据加载失败(' + r.status + ')，请从带 token 的原链接重新进入';
+    return;
+  }
+  DATA = await r.json();
+  init();
+})();
+function init() {
+
+const nodeById = {}; DATA.nodes.forEach(n => nodeById[n.id] = n);
+const nodeIdx = {}; DATA.nodes.forEach((n, i) => nodeIdx[n.id] = i);
+const commSize = {}; DATA.nodes.forEach(n => { commSize[n.category] = (commSize[n.category] || 0) + 1; });
+const commById = {}; DATA.categories.forEach((c, i) => commById[i] = c);
+
+document.getElementById('stats').textContent =
+  DATA.stats.events + ' 事件 · ' + DATA.stats.edges + ' 关联 · ' + DATA.stats.communities + ' 故事群';
+
+const chart = echarts.init(document.getElementById('chart'));
+chart.setOption({
+  backgroundColor: '#faf7f2',
+  tooltip: { show: false },
+  animationDuration: 1000,
+  series: [{
+    type: 'graph', layout: 'force', roam: true, draggable: true,
+    categories: DATA.categories,
+    force: { repulsion: 260, edgeLength: [40, 120], gravity: 0.08, friction: 0.5 },
+    label: { show: false },
+    emphasis: { focus: 'adjacency', label: { show: true, fontSize: 12, color: '#4a423a', fontWeight: 'bold' }, lineStyle: { width: 2.2 } },
+    lineStyle: { opacity: 0.55, curveness: 0.08 },
+    data: DATA.nodes.map(n => ({ ...n, id: String(n.id) })),
+    links: DATA.links.map(l => ({ ...l, source: String(l.source), target: String(l.target) })),
+  }]
+});
+
+// ── 社区筛选状态 ──
+const hidden = new Set();
+let selectedComm = null;   // 左栏选中的社区
+let selectedNode = null;   // 选中的事件
+
+function updateVisible() {
+  if (selectedNode && hidden.has(nodeById[selectedNode].category)) selectedNode = null;
+  if (vizMode === 'strata') { renderLayered3D(); return; }
+  const visibleNodes = DATA.nodes.filter(n => !hidden.has(n.category));
+  const visibleIds = new Set(visibleNodes.map(n => n.id));
+  const visibleLinks = DATA.links.filter(l => visibleIds.has(l.source) && visibleIds.has(l.target));
+  chart.setOption({ series: [{ data: visibleNodes, links: visibleLinks }] });
+}
+
+// ── 左栏: 社区列表 ──
+const commList = document.getElementById('commList');
+DATA.categories.forEach((c, i) => {
+  const el = document.createElement('div');
+  el.className = 'comm-item';
+  el.innerHTML = `<span class="dot" style="background:${c.itemStyle.color}"></span>${c.name}<span class="cn">${commSize[i] || 0}</span>`;
+  el.onclick = () => {
+    if (selectedComm === i) { selectedComm = null; el.classList.remove('on'); }
+    else {
+      selectedComm = i;
+      document.querySelectorAll('.comm-item').forEach(x => x.classList.remove('on'));
+      el.classList.add('on');
+      hidden.clear();
+      DATA.categories.forEach((_, j) => { if (j !== i) hidden.add(j); });
+      document.querySelectorAll('.lg-item').forEach((x, j) => { x.style.opacity = j === i ? 1 : 0.35; });
+    }
+    updateVisible();
+    renderEvents();
+  };
+  commList.appendChild(el);
+});
+document.getElementById('commCnt').textContent = DATA.categories.length + ' 个';
+
+// ── 右栏图例(点击筛选, 与左栏同步) ──
+const commLegend = document.getElementById('commLegend');
+DATA.categories.forEach((c, i) => {
+  const el = document.createElement('span');
+  el.className = 'lg-item';
+  el.innerHTML = `<span class="dot" style="background:${c.itemStyle.color}"></span>${c.name}<span class="cnt">${commSize[i] || 0}</span>`;
+  el.onclick = () => {
+    if (hidden.has(i)) { hidden.delete(i); el.style.opacity = 1; }
+    else { hidden.add(i); el.style.opacity = 0.35; }
+    if (selectedComm === i) { selectedComm = null; document.querySelectorAll('.comm-item').forEach(x => x.classList.remove('on')); }
+    updateVisible(); renderEvents();
+  };
+  commLegend.appendChild(el);
+});
+
+// ── 左栏: 事件列表(搜索 + 时间排序) ──
+const evList = document.getElementById('evList');
+const search = document.getElementById('search');
+const sortedNodes = [...DATA.nodes].sort((a, b) => (a.time || '').localeCompare(b.time || ''));
+
+function renderEvents() {
+  const q = search.value.trim().toLowerCase();
+  const filtered = sortedNodes.filter(n =>
+    !hidden.has(n.category) &&
+    (!q || n.name.toLowerCase().includes(q)));
+  evList.innerHTML = '';
+  filtered.forEach(n => {
+    const el = document.createElement('div');
+    el.className = 'ev-item' + (selectedNode === n.id ? ' on' : '');
+    const col = DATA.categories[n.category].itemStyle.color;
+    el.innerHTML = `<span class="dot" style="background:${col}"></span><span class="t">${n.name}</span><span class="d">${(n.time || '').slice(0, 10)}</span>`;
+    el.onclick = () => focusNode(n.id);
+    evList.appendChild(el);
+  });
+  document.getElementById('evCnt').textContent = filtered.length + ' / ' + DATA.nodes.length;
+}
+search.addEventListener('input', renderEvents);
+
+// ── 聚焦一个事件: 图高亮 + 左栏详情 ──
+function focusNode(id) {
+  selectedNode = id;
+  // 若被筛选隐藏 → 恢复其社区
+  const n = nodeById[id];
+  if (hidden.has(n.category)) {
+    hidden.delete(n.category);
+    document.querySelectorAll('.lg-item')[n.category].style.opacity = 1;
+    updateVisible();
+  }
+  if (vizMode === 'net') {
+    chart.dispatchAction({ type: 'downplay', seriesIndex: 0 });
+    // 图被社区筛选后索引会重排，按当前 series 查找避免高亮错位。
+    const data = (chart.getOption().series || [{}])[0].data || [];
+    const idx = data.findIndex(d => String(d.id) === String(id));
+    if (idx >= 0) chart.dispatchAction({ type: 'highlight', seriesIndex: 0, dataIndex: idx });
+  } else {
+    renderLayered3D();
+  }
+  showDetail(id);
+  renderEvents();
+}
+
+// ── 左栏详情: 事件信息 + 关联邻居 ──
+function showDetail(id) {
+  const n = nodeById[id];
+  const detail = document.getElementById('detail');
+  detail.style.display = 'block';
+  // 邻居(关联边)
+  const nbrs = DATA.links
+    .filter(l => l.source === id || l.target === id)
+    .map(l => {
+      const other = l.source === id ? l.target : l.source;
+      return { id: other, types: l.types, extra: l.extra };
+    })
+    .sort((a, b) => (nodeById[b.id]?.value || 0) - (nodeById[a.id]?.value || 0));
+  detail.innerHTML =
+    `<div class="d-title">${n.name}</div>` +
+    `<div class="d-meta">#${n.id} · ${n.event_type}${n.time ? ' · ' + n.time + (n.time_end && n.time_end !== n.time ? ' ~ ' + n.time_end : '') : ''} · 关联 ${n.value} 条</div>` +
+    `<div class="d-comm">◉ ${n.comm_name}</div>` +
+    (n.summary ? `<div class="d-sum">${n.summary}</div>` : '') +
+    (nbrs.length ? `<div class="d-nbr"><div class="d-nbr-title">关联 · ${nbrs.length} 条</div>` +
+      nbrs.slice(0, 12).map(nb =>
+        `<div class="nbr-item" onclick="focusNode(${nb.id})"><span class="dot" style="background:${DATA.categories[nodeById[nb.id].category].itemStyle.color}"></span>${nodeById[nb.id].name}<span style="font-size:10px;color:#b0a69b;margin-left:auto">${nb.types}</span></div>`
+      ).join('') + `</div>` : '');
+}
+
+// ── 图中点击: 节点 → 左栏详情(或点选建边); 边 → 填入建边表单 A/B ──
+chart.on('click', (p) => {
+  if (p.dataType === 'node') {
+    if (pickMode) return pickNode(Number(p.data.id));
+    focusNode(Number(p.data.id));
+  }
+  else if (p.dataType === 'edge' && !pickMode) {
+    const l = p.data;
+    linkA.value = String(l.source);
+    linkB.value = String(l.target);
+    const parts = String(l.types || '').split(' + ');
+    if (parts.length === 1) {
+      const m = { '同时段': 'overlap', '语义血缘': 'thematic', '因果关联': 'causal' }[parts[0]];
+      if (m) { document.querySelector(`input[name=etype][value="${m}"]`).checked = true; syncCausalFields(); }
+    }
+    toast('已填入 A / B，确认类型后点「建立关联」或「解除手动边」');
+  }
+});
+
+// ── 悬停提示 ──
+const tip = document.getElementById('tip');
+function showTipAt(e, html) {
+  tip.innerHTML = html;
+  tip.style.display = 'block';
+  const w = tip.offsetWidth, h = tip.offsetHeight;
+  let x = e.clientX + 14, y = e.clientY + 14;
+  if (x + w > window.innerWidth - 8) x = e.clientX - w - 14;
+  if (y + h > window.innerHeight - 8) y = e.clientY - h - 14;
+  tip.style.left = x + 'px'; tip.style.top = y + 'px';
+}
+function nodeTipHTML(n) {
+  return `<div class="t-title">${n.name}</div>` +
+    `<div style="font-size:11px;color:#a89f94;font-family:'Courier New',monospace">#${n.id} · ${n.event_type}${n.time ? ' · ' + n.time : ''} · 关联 ${n.value}</div>` +
+    `<div style="color:#8d7f6d;margin-top:2px">◉ ${n.comm_name}</div>` +
+    (n.summary ? `<div style="margin-top:4px">${n.summary}</div>` : '');
+}
+chart.on('mouseover', (p) => {
+  if (p.dataType === 'node') {
+    showTipAt(p.event, nodeTipHTML(p.data));
+  } else if (p.dataType === 'edge') {
+    const l = p.data;
+    const s = nodeById[l.source], t = nodeById[l.target];
+    tip.innerHTML =
+      `<div class="t-title">${s ? s.name : l.source} ↔ ${t ? t.name : l.target}</div>` +
+      `<div class="t-link">${l.types}${l.extra ? '<br>' + l.extra : ''}</div>`;
+    tip.style.display = 'block'; positionTip(p.event);
+  }
+});
+chart.on('mouseout', () => { tip.style.display = 'none'; });
+chart.on('mousemove', positionTip);
+function positionTip(e) {
+  const w = tip.offsetWidth, h = tip.offsetHeight;
+  let x = e.offsetX + 14, y = e.offsetY + 14;
+  if (x + w > window.innerWidth - 8) x = e.offsetX - w - 14;
+  if (y + h > window.innerHeight - 8) y = e.offsetY - h - 14;
+  tip.style.left = x + 'px'; tip.style.top = y + 'px';
+}
+
+// ── 点图选边 (2026-08-16): 先点「因」再点「果」→ 浮动面板填理由 → 建因果边 ──
+let pickMode = false, pickA = null, pickB = null;
+const pickBtn = document.getElementById('pickBtn');
+const pickStatus = document.getElementById('pickStatus');
+const linkPanel = document.getElementById('linkPanel');
+
+function chartHighlight(id) {
+  // 按当前图上实际数据找下标(有社区被筛掉时 nodeIdx 会错位)
+  const data = (chart.getOption().series || [{}])[0].data || [];
+  const idx = data.findIndex(d => String(d.id) === String(id));
+  if (idx >= 0) chart.dispatchAction({ type: 'highlight', seriesIndex: 0, dataIndex: idx });
+}
+function clearHighlight() {
+  chart.dispatchAction({ type: 'downplay', seriesIndex: 0 });
+}
+function resetPick() {
+  pickA = null; pickB = null;
+  clearHighlight();
+  pickStatus.style.display = 'none';
+  linkPanel.style.display = 'none';
+}
+pickBtn.onclick = () => {
+  pickMode = !pickMode;
+  pickBtn.classList.toggle('on', pickMode);
+  // 点选模式下关掉节点拖动(避免点选时误把节点拖走); roam 平移不受影响
+  chart.setOption({ series: [{ draggable: !pickMode }] });
+  if (pickMode) toast('点选模式：先点「因」节点，再点「果」节点');
+  else resetPick();
+};
+function pickNode(id) {
+  const n = nodeById[id];
+  if (pickA === null) {
+    pickA = id;
+    clearHighlight();
+    chartHighlight(id);
+    pickStatus.textContent = '已选因：「' + n.name + '」—— 再点一个节点作为果';
+    pickStatus.style.display = 'block';
+  } else if (id !== pickA) {
+    pickB = id;
+    chartHighlight(id);
+    pickStatus.style.display = 'none';
+    document.getElementById('linkPanelTitle').textContent = nodeById[pickA].name + ' → ' + n.name;
+    document.getElementById('linkNameF').value = '';
+    document.getElementById('linkReasonF').value = '';
+    linkPanel.style.display = 'block';
+    setTimeout(() => document.getElementById('linkReasonF').focus(), 60);
+  } else {
+    // 再点同一个点 → 取消重选
+    resetPick();
+    pickA = id;
+    chartHighlight(id);
+    pickStatus.textContent = '已选因：「' + n.name + '」—— 再点一个节点作为果';
+    pickStatus.style.display = 'block';
+  }
+}
+document.getElementById('linkPanelCancel').onclick = () => resetPick();
+document.getElementById('linkPanelOk').onclick = async () => {
+  const reason = document.getElementById('linkReasonF').value.trim();
+  if (!reason) return toast('因果边必须写理由——为什么前者是后者的原因');
+  const body = {
+    event_a: pickA, event_b: pickB, edge_type: 'causal',
+    name: document.getElementById('linkNameF').value.trim(),
+    reason,
+    direction: 'a→b',   // 先点的是因, 后点的是果
+  };
+  const r = await fetch('./link', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
+    .then(x => x.json()).catch(() => ({ ok: false, error: '网络错误' }));
+  if (!r.ok) { toast('建边失败: ' + (r.error || 'unknown')); return; }
+  toast('已建立：' + nodeById[pickA].name + ' → ' + nodeById[pickB].name + '，刷新中…');
+  setTimeout(() => location.reload(), 700);
+};
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape' && linkPanel.style.display === 'block') resetPick();
+});
+
+// ── 写操作: 手动建边/解边 + 单独重建社区 (2026-08-16) ──
+// 鉴权走 viz HttpOnly cookie(首次 ?token= 换的), 页面 JS 不碰口令本身
+const linkA = document.getElementById('linkA');
+const linkB = document.getElementById('linkB');
+const esc = s => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+const evOpts = sortedNodes.map(n =>
+  `<option value="${n.id}">${esc(n.name)}${n.time ? ' · ' + n.time.slice(0, 10) : ''}</option>`).join('');
+linkA.innerHTML = '<option value="">— 选择事件 A —</option>' + evOpts;
+linkB.innerHTML = '<option value="">— 选择事件 B —</option>' + evOpts;
+
+const toastEl = document.getElementById('toast');
+let toastTimer = null;
+function toast(msg) {
+  toastEl.textContent = msg;
+  toastEl.style.display = 'block';
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => { toastEl.style.display = 'none'; }, 3200);
+}
+
+// 因果边 → 显示名字/理由/方向字段
+const causalFields = document.getElementById('causalFields');
+function syncCausalFields() {
+  const causal = document.querySelector('input[name=etype]:checked').value === 'causal';
+  causalFields.style.display = causal ? 'block' : 'none';
+}
+document.querySelectorAll('input[name=etype]').forEach(r => r.addEventListener('change', syncCausalFields));
+
+document.getElementById('linkBtn').onclick = async () => {
+  const a = Number(linkA.value), b = Number(linkB.value);
+  const type = document.querySelector('input[name=etype]:checked').value;
+  if (!a || !b) return toast('请选择两个事件');
+  if (a === b) return toast('A 和 B 不能是同一个事件');
+  const body = { event_a: a, event_b: b, edge_type: type };
+  if (type === 'causal') {
+    body.name = document.getElementById('linkName').value.trim();
+    body.reason = document.getElementById('linkReason').value.trim();
+    body.direction = document.getElementById('linkDir').value;
+  }
+  const r = await fetch('./link', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
+    .then(x => x.json()).catch(() => ({ ok: false, error: '网络错误' }));
+  if (!r.ok) return toast('建边失败: ' + (r.error || 'unknown'));
+  toast('已建立关联，刷新中…');
+  setTimeout(() => location.reload(), 600);
+};
+
+document.getElementById('unlinkBtn').onclick = async () => {
+  const a = Number(linkA.value), b = Number(linkB.value);
+  const type = document.querySelector('input[name=etype]:checked').value;
+  if (!a || !b) return toast('请选择两个事件');
+  if (!confirm('解除这两个事件之间的这条手动边？\\n(只删手动建过的，自动算出的边不受影响)')) return;
+  const r = await fetch(`./link?event_a=${a}&event_b=${b}&edge_type=${type}`, { method: 'DELETE' })
+    .then(x => x.json()).catch(() => ({ ok: false, error: '网络错误' }));
+  if (!r.ok) return toast('解除失败: ' + (r.error || 'unknown'));
+  toast(r.removed > 0 ? '已解除，刷新中…' : '这条边不存在（或不是手动边）');
+  if (r.removed > 0) setTimeout(() => location.reload(), 600);
+};
+
+document.getElementById('rebuildCommBtn').onclick = async () => {
+  if (!confirm('重跑 Louvain 社区聚类？\\n已命名社区按成员匹配(Jaccard≥0.8)保留名字，其余重新分组。\\n只重算社区，不动事件和边。')) return;
+  const btn = document.getElementById('rebuildCommBtn');
+  btn.disabled = true; btn.textContent = '聚类中…';
+  const r = await fetch('./communities/rebuild', { method: 'POST' })
+    .then(x => x.json()).catch(() => ({ ok: false, error: '网络错误' }));
+  btn.disabled = false; btn.textContent = '重建社区';
+  if (!r.ok) return toast('重建失败: ' + (r.error || 'unknown'));
+  toast(`重建完成: ${r.communities} 个社区 · ${r.preserved} 个保留名字，刷新中…`);
+  setTimeout(() => location.reload(), 800);
+};
+
+// ── 网络 / 四层事件 ──
+const modeNet = document.getElementById('modeNet');
+const modeStrata = document.getElementById('modeStrata');
+// 旧时间/矩阵 renderer 留在脚本历史段，当前没有入口；四层视图使用这两个容器。
+const riverWrap = document.getElementById('strataWrap');
+const riverSvg = document.getElementById('strataSvg');
+const matrixWrap = null;
+const matrixTable = null;
+let vizMode = 'net';
+try { vizMode = localStorage.getItem('vizMode') || 'net'; } catch {}
+if (!['net', 'strata'].includes(vizMode)) vizMode = 'net';
+const dotEls = {};
+let matrixPair = null;
+
+function setMode(m) {
+  vizMode = m;
+  try { localStorage.setItem('vizMode', m); } catch {}
+  modeNet.classList.toggle('on', m === 'net');
+  modeStrata.classList.toggle('on', m === 'strata');
+  document.getElementById('chart').style.display = m === 'net' ? '' : 'none';
+  riverWrap.style.display = m === 'strata' ? '' : 'none';
+  pickBtn.style.display = m === 'net' ? '' : 'none';
+  if (pickMode) { pickMode = false; pickBtn.classList.remove('on'); chart.setOption({ series: [{ draggable: true }] }); }
+  resetPick();
+  if (m === 'net') chart.resize();
+  if (m === 'strata') renderLayered3D();
+}
+modeNet.onclick = () => setMode('net');
+modeStrata.onclick = () => setMode('strata');
+
+function markDot(id) {
+  const el = dotEls[id];
+  if (el) el.classList.add('picked');
+}
+
+function renderRiverStaticLegacy() {
+  Object.keys(dotEls).forEach(k => delete dotEls[k]);
+  const W = riverWrap.clientWidth, H = riverWrap.clientHeight;
+  if (!W || !H) return;
+  riverSvg.setAttribute('width', W);
+  riverSvg.setAttribute('height', H);
+  riverSvg.innerHTML = '';
+  const defs = document.createElementNS('http://www.w3.org/2000/svg', 'defs');
+  defs.innerHTML = '<marker id="arrowGold" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#c9a86a"/></marker>';
+  riverSvg.appendChild(defs);
+
+  // 社区缎带: 按最早出现时间排序
+  const lanes = [];
+  DATA.categories.forEach((c, i) => {
+    const ms = DATA.nodes.filter(n => n.category === i);
+    const ts = ms.map(n => n.time).filter(Boolean).sort();
+    if (!ts.length) return;
+    const tes = ms.map(n => n.time_end).filter(Boolean).sort();
+    lanes.push({ idx: i, name: c.name, color: c.itemStyle.color, start: ts[0], end: tes.length ? tes[tes.length - 1] : ts[ts.length - 1] });
+  });
+  lanes.sort((a, b) => a.start.localeCompare(b.start));
+  if (!lanes.length) return;
+
+  const tMs = t => { const v = new Date(t).getTime(); return isNaN(v) ? null : v; };
+  let t0 = lanes[0].start, t1 = lanes[0].end;
+  lanes.forEach(l => { if (l.start < t0) t0 = l.start; if (l.end > t1) t1 = l.end; });
+  const a0 = tMs(t0), a1 = tMs(t1);
+  const x = t => {
+    const v = tMs(t);
+    if (v === null || !a0 || !a1 || a1 === a0) return W / 2;
+    return 60 + (v - a0) / (a1 - a0) * (W - 120);
+  };
+  const laneH = Math.max(26, Math.min(56, (H - 70) / lanes.length));
+  const top = 30;
+  const laneY = i => top + i * laneH + laneH / 2;
+  const posOf = {};
+
+  lanes.forEach((ln, i) => {
+    const y = laneY(i);
+    // 缎带: 轻波曲线
+    const sa = tMs(ln.start), ea = tMs(ln.end);
+    let d = '';
+    const N = 90;
+    for (let k = 0; k <= N; k++) {
+      const tt = (sa !== null && ea !== null && ea !== sa) ? new Date(sa + (ea - sa) * k / N).toISOString() : ln.start;
+      const px = x(tt);
+      const py = y + Math.sin(k * 0.55 + i * 1.7) * 2.4;
+      d += (k === 0 ? 'M' : 'L') + px.toFixed(1) + ' ' + py.toFixed(1);
+    }
+    const band = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+    band.setAttribute('d', d);
+    band.setAttribute('fill', 'none');
+    band.setAttribute('stroke', ln.color);
+    band.setAttribute('stroke-width', 8);
+    band.setAttribute('stroke-opacity', hidden.has(ln.idx) ? 0.06 : 0.15);
+    band.setAttribute('stroke-linecap', 'round');
+    riverSvg.appendChild(band);
+    const core = band.cloneNode();
+    core.setAttribute('stroke-width', 1.8);
+    core.setAttribute('stroke-opacity', hidden.has(ln.idx) ? 0.12 : 0.5);
+    riverSvg.appendChild(core);
+    // 缎带名
+    const label = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+    label.setAttribute('x', 12);
+    label.setAttribute('y', y + 4);
+    label.setAttribute('font-size', 11.5);
+    label.setAttribute('fill', ln.color);
+    label.setAttribute('font-family', '"Noto Serif SC","Songti SC",serif');
+    label.setAttribute('letter-spacing', '1');
+    label.setAttribute('opacity', hidden.has(ln.idx) ? 0.25 : 0.95);
+    label.textContent = ln.name;
+    riverSvg.appendChild(label);
+    // 事件点
+    DATA.nodes.forEach(n => {
+      if (n.category !== ln.idx) return;
+      const px = n.time ? x(n.time) : x(ln.end);
+      const r = Math.max(4, (n.symbolSize || 10) / 2);
+      const hollow = !n.time;
+      const c = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+      c.setAttribute('cx', px);
+      c.setAttribute('cy', y);
+      c.setAttribute('r', r);
+      c.setAttribute('fill', hollow ? 'none' : n.itemStyle.color);
+      c.setAttribute('stroke', n.itemStyle.color);
+      c.setAttribute('stroke-width', hollow ? 1.5 : 1.2);
+      c.setAttribute('opacity', hidden.has(n.category) ? 0.2 : 1);
+      c.setAttribute('cursor', 'pointer');
+      c.setAttribute('data-id', n.id);
+      c.addEventListener('mouseover', (e) => showTipAt(e, nodeTipHTML(n)));
+      c.addEventListener('mouseout', () => { tip.style.display = 'none'; });
+      c.addEventListener('click', () => {
+        if (pickMode) pickNode(n.id);
+        else focusNode(n.id);
+      });
+      riverSvg.appendChild(c);
+      if (n.time) { posOf[n.id] = [px, y]; dotEls[n.id] = c; }
+    });
+  });
+
+  // 因果箭头
+  (DATA.causal || []).forEach(ce => {
+    const p1 = posOf[ce.from], p2 = posOf[ce.to];
+    if (!p1 || !p2) return;
+    const mx = (p1[0] + p2[0]) / 2, my = Math.min(p1[1], p2[1]) - 36;
+    const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+    path.setAttribute('d', 'M' + p1[0] + ' ' + p1[1] + ' Q' + mx + ' ' + my + ' ' + p2[0] + ' ' + p2[1]);
+    path.setAttribute('fill', 'none');
+    path.setAttribute('stroke', '#c9a86a');
+    path.setAttribute('stroke-width', 1.6);
+    path.setAttribute('stroke-dasharray', '5 4');
+    path.setAttribute('marker-end', 'url(#arrowGold)');
+    path.setAttribute('opacity', 0.8);
+    const tipTxt = (ce.name ? '「' + ce.name + '」 ' : '') + (ce.reason || '');
+    if (tipTxt) {
+      path.setAttribute('cursor', 'pointer');
+      path.addEventListener('mouseover', (e) => showTipAt(e, '<div class="t-link">' + tipTxt + '</div>'));
+      path.addEventListener('mouseout', () => { tip.style.display = 'none'; });
+    }
+    riverSvg.appendChild(path);
+  });
+
+  // 年份刻度
+  const ys = {};
+  DATA.nodes.forEach(n => { if (n.time) ys[n.time.slice(0, 4)] = 1; });
+  Object.keys(ys).sort().forEach(yy => {
+    const tx = x(yy + '-01-01');
+    if (tx < 50 || tx > W - 50) return;
+    const line = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+    line.setAttribute('x1', tx); line.setAttribute('x2', tx);
+    line.setAttribute('y1', 6); line.setAttribute('y2', H - 8);
+    line.setAttribute('stroke', '#d8cdbf');
+    line.setAttribute('stroke-width', 1);
+    line.setAttribute('stroke-dasharray', '2 4');
+    riverSvg.appendChild(line);
+    const t = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+    t.setAttribute('x', tx + 4); t.setAttribute('y', H - 14);
+    t.setAttribute('font-size', 10);
+    t.setAttribute('fill', '#b0a69b');
+    t.setAttribute('font-family', '"Courier New",monospace');
+    t.textContent = yy;
+    riverSvg.appendChild(t);
+  });
+}
+
+// ── 可缩放社区时间轴（后定义以替换旧的静态河流 renderer）──
+const TIMELINE_DAY = 24 * 60 * 60 * 1000;
+const svgNS = 'http://www.w3.org/2000/svg';
+const timeView = { fullStart: null, fullEnd: null, start: null, end: null };
+let timeDrag = null;
+let ignoreTimelineClickUntil = 0;
+
+function svg(name, attrs = {}) {
+  const el = document.createElementNS(svgNS, name);
+  Object.entries(attrs).forEach(([key, value]) => el.setAttribute(key, String(value)));
+  return el;
+}
+function timeMs(value) {
+  if (!value) return null;
+  const ms = new Date(value).getTime();
+  return Number.isFinite(ms) ? ms : null;
+}
+function ensureTimeRange() {
+  if (timeView.fullStart !== null) return true;
+  const values = DATA.nodes.flatMap(n => [timeMs(n.time), timeMs(n.time_end)]).filter(v => v !== null);
+  if (!values.length) return false;
+  let start = Math.min(...values), end = Math.max(...values);
+  if (end <= start) { start -= 30 * TIMELINE_DAY; end += 30 * TIMELINE_DAY; }
+  const pad = Math.max(14 * TIMELINE_DAY, (end - start) * 0.04);
+  timeView.fullStart = start - pad;
+  timeView.fullEnd = end + pad;
+  timeView.start = timeView.fullStart;
+  timeView.end = timeView.fullEnd;
+  return true;
+}
+function setTimeRange(start, end) {
+  if (!ensureTimeRange()) return;
+  const fullSpan = timeView.fullEnd - timeView.fullStart;
+  const minSpan = Math.min(fullSpan, Math.max(2 * TIMELINE_DAY, fullSpan / 400));
+  const span = Math.max(minSpan, Math.min(fullSpan, end - start));
+  let nextStart = start, nextEnd = start + span;
+  if (nextStart < timeView.fullStart) { nextStart = timeView.fullStart; nextEnd = nextStart + span; }
+  if (nextEnd > timeView.fullEnd) { nextEnd = timeView.fullEnd; nextStart = nextEnd - span; }
+  timeView.start = nextStart;
+  timeView.end = nextEnd;
+  renderRiver();
+}
+function resetTimeRange() {
+  if (!ensureTimeRange()) return;
+  timeView.start = timeView.fullStart;
+  timeView.end = timeView.fullEnd;
+  renderRiver();
+}
+document.getElementById('timeReset')?.addEventListener('click', e => { e.stopPropagation(); resetTimeRange(); });
+
+function renderRiver() {
+  Object.keys(dotEls).forEach(k => delete dotEls[k]);
+  const W = riverWrap.clientWidth, viewH = riverWrap.clientHeight;
+  if (!W || !viewH || !ensureTimeRange()) return;
+  const left = 108, right = 28;
+  const plotW = Math.max(1, W - left - right);
+  const span = timeView.end - timeView.start;
+  const x = ms => left + (ms - timeView.start) / span * plotW;
+  const visibleNodes = DATA.nodes.filter(n => !hidden.has(n.category));
+  const rangeOf = n => {
+    const start = timeMs(n.time);
+    const rawEnd = timeMs(n.time_end);
+    return start === null ? null : { start, end: rawEnd !== null && rawEnd > start ? rawEnd : start };
+  };
+  const layoutLane = (nodes, isUnknown = false) => {
+    const rowEnds = [];
+    const items = [];
+    [...nodes].sort((a, b) => {
+      const ra = rangeOf(a), rb = rangeOf(b);
+      return (ra?.start ?? 0) - (rb?.start ?? 0) || a.id - b.id;
+    }).forEach((node, i) => {
+      const range = rangeOf(node);
+      const px1 = isUnknown ? left + 10 + (i % Math.max(1, Math.floor(plotW / 24))) * 24 : x(range.start);
+      const px2 = isUnknown ? px1 : x(range.end);
+      const rightEdge = Math.max(px1 + 9, px2);
+      let row = rowEnds.findIndex(last => last < px1 - 6);
+      if (row < 0) { row = rowEnds.length; rowEnds.push(-Infinity); }
+      rowEnds[row] = rightEdge;
+      items.push({ node, range, px1, px2, rightEdge, row });
+    });
+    return { items, rows: Math.max(1, rowEnds.length) };
+  };
+
+  const lanes = [];
+  DATA.categories.forEach((category, idx) => {
+    const nodes = visibleNodes.filter(n => n.category === idx && rangeOf(n));
+    if (!nodes.length) return;
+    const layout = layoutLane(nodes);
+    lanes.push({
+      idx, name: category.name, color: category.itemStyle.color,
+      start: Math.min(...layout.items.map(i => i.range.start)),
+      end: Math.max(...layout.items.map(i => i.range.end)),
+      ...layout,
+    });
+  });
+  lanes.sort((a, b) => a.start - b.start || a.idx - b.idx);
+  const unknown = visibleNodes.filter(n => !rangeOf(n));
+  if (unknown.length) lanes.push({ idx: null, name: '未标时间', color: '#a89f94', start: null, end: null, ...layoutLane(unknown, true) });
+  if (!lanes.length) return;
+
+  let yCursor = 30;
+  lanes.forEach(lane => {
+    lane.height = Math.max(46, 28 + (lane.rows - 1) * 16);
+    lane.y = yCursor + lane.height / 2;
+    lane.items.forEach(item => { item.y = lane.y + (item.row - (lane.rows - 1) / 2) * 16; });
+    yCursor += lane.height;
+  });
+  const H = Math.max(viewH, yCursor + 26);
+  riverSvg.setAttribute('width', W);
+  riverSvg.setAttribute('height', H);
+  riverSvg.setAttribute('viewBox', `0 0 ${W} ${H}`);
+  riverSvg.innerHTML = '';
+  const defs = svg('defs');
+  defs.innerHTML = '<marker id="arrowGold" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#c9a86a"/></marker>';
+  riverSvg.appendChild(defs);
+
+  const tickStep = span > 3 * 365 * TIMELINE_DAY ? 365 * TIMELINE_DAY : span > 300 * TIMELINE_DAY ? 90 * TIMELINE_DAY : span > 90 * TIMELINE_DAY ? 30 * TIMELINE_DAY : span > 20 * TIMELINE_DAY ? 7 * TIMELINE_DAY : TIMELINE_DAY;
+  const tickLabel = ms => {
+    const d = new Date(ms);
+    if (tickStep >= 365 * TIMELINE_DAY) return String(d.getUTCFullYear());
+    if (tickStep >= 30 * TIMELINE_DAY) return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}`;
+    return `${d.getUTCMonth() + 1}/${d.getUTCDate()}`;
+  };
+  for (let t = Math.ceil(timeView.start / tickStep) * tickStep; t <= timeView.end; t += tickStep) {
+    const px = x(t);
+    const line = svg('line', { x1: px, x2: px, y1: 14, y2: H - 12, stroke: '#e8dfd4', 'stroke-width': 1, 'stroke-dasharray': '2 4' });
+    const label = svg('text', { x: px + 3, y: 18, fill: '#a89f94', 'font-size': 10, 'font-family': 'Courier New,monospace' });
+    label.textContent = tickLabel(t);
+    riverSvg.append(line, label);
+  }
+
+  const posOf = {};
+  lanes.forEach(lane => {
+    const laneStart = lane.start === null ? left : x(lane.start);
+    const laneEnd = lane.end === null ? W - right : x(lane.end);
+    riverSvg.appendChild(svg('rect', { x: Math.min(laneStart, laneEnd), y: lane.y - 10, width: Math.max(18, Math.abs(laneEnd - laneStart)), height: 20, rx: 10, fill: lane.color, 'fill-opacity': 0.10 }));
+    const label = svg('text', { x: 12, y: lane.y + 4, fill: lane.color, 'font-size': 11.5, 'font-family': '"Noto Serif SC","Songti SC",serif', 'letter-spacing': 1 });
+    label.textContent = lane.name;
+    riverSvg.appendChild(label);
+    lane.items.forEach(item => {
+      // 未标时间的事件只进独立泳道，不伪造因果箭头的时间位置。
+      if (item.range) posOf[item.node.id] = [(item.px1 + Math.max(item.px1 + 9, item.px2)) / 2, item.y];
+    });
+  });
+
+  const causal = DATA.causal || [];
+  const causalShown = selectedNode !== null ? causal.filter(ce => ce.from === selectedNode || ce.to === selectedNode) : causal.length <= 12 ? causal : [];
+  causalShown.forEach(ce => {
+    const p1 = posOf[ce.from], p2 = posOf[ce.to];
+    if (!p1 || !p2) return;
+    const mx = (p1[0] + p2[0]) / 2, my = Math.min(p1[1], p2[1]) - 36;
+    const path = svg('path', { d: `M${p1[0]} ${p1[1]} Q${mx} ${my} ${p2[0]} ${p2[1]}`, fill: 'none', stroke: '#c9a86a', 'stroke-width': 1.6, 'stroke-dasharray': '5 4', 'marker-end': 'url(#arrowGold)', opacity: 0.8 });
+    const tipTxt = (ce.name ? '「' + ce.name + '」 ' : '') + (ce.reason || '');
+    if (tipTxt) {
+      path.setAttribute('cursor', 'pointer');
+      path.addEventListener('mouseover', e => showTipAt(e, '<div class="t-link">' + tipTxt + '</div>'));
+      path.addEventListener('mouseout', () => { tip.style.display = 'none'; });
+    }
+    riverSvg.appendChild(path);
+  });
+
+  lanes.forEach(lane => lane.items.forEach(item => {
+    const n = item.node;
+    const isRange = item.range && item.range.end > item.range.start;
+    const group = svg('g', { cursor: 'pointer' });
+    let shape;
+    if (isRange) {
+      shape = svg('rect', { x: item.px1, y: item.y - 5, width: Math.max(9, item.px2 - item.px1), height: 10, rx: 5, fill: n.itemStyle.color, stroke: n.itemStyle.color, 'fill-opacity': 0.86, 'stroke-width': 1.2 });
+      if (item.px2 - item.px1 > 74) {
+        const title = svg('text', { x: item.px1 + 5, y: item.y - 8, fill: '#6e645a', 'font-size': 10.5, 'pointer-events': 'none' });
+        title.textContent = n.name;
+        group.appendChild(title);
+      }
+    } else {
+      shape = svg('circle', { cx: item.px1, cy: item.y, r: Math.max(4, (n.symbolSize || 10) / 2), fill: n.itemStyle.color, stroke: n.itemStyle.color, 'stroke-width': 1.2 });
+    }
+    if (selectedNode === n.id) shape.classList.add('picked');
+    group.appendChild(shape);
+    group.addEventListener('mouseover', e => showTipAt(e, nodeTipHTML(n)));
+    group.addEventListener('mouseout', () => { tip.style.display = 'none'; });
+    group.addEventListener('click', e => {
+      e.stopPropagation();
+      if (Date.now() < ignoreTimelineClickUntil) return;
+      if (pickMode) pickNode(n.id); else focusNode(n.id);
+    });
+    riverSvg.appendChild(group);
+    dotEls[n.id] = shape;
+  }));
+}
+
+riverWrap.addEventListener('wheel', e => {
+  if (vizMode !== 'time' || !ensureTimeRange()) return;
+  e.preventDefault();
+  const rect = riverWrap.getBoundingClientRect();
+  const ratio = Math.max(0, Math.min(1, (e.clientX - rect.left - 108) / Math.max(1, rect.width - 136)));
+  const pivot = timeView.start + (timeView.end - timeView.start) * ratio;
+  const nextSpan = (timeView.end - timeView.start) * Math.exp(e.deltaY * 0.0015);
+  setTimeRange(pivot - nextSpan * ratio, pivot + nextSpan * (1 - ratio));
+}, { passive: false });
+riverWrap.addEventListener('pointerdown', e => {
+  if (vizMode !== 'time' || e.button !== 0 || e.target.closest('#timeReset')) return;
+  timeDrag = { x: e.clientX, start: timeView.start, end: timeView.end, moved: false };
+  riverWrap.setPointerCapture(e.pointerId);
+  riverWrap.classList.add('dragging');
+});
+riverWrap.addEventListener('pointermove', e => {
+  if (!timeDrag) return;
+  const dx = e.clientX - timeDrag.x;
+  if (Math.abs(dx) > 3) timeDrag.moved = true;
+  const shift = dx / Math.max(1, riverWrap.clientWidth - 136) * (timeDrag.end - timeDrag.start);
+  setTimeRange(timeDrag.start - shift, timeDrag.end - shift);
+});
+const endTimeDrag = e => {
+  if (!timeDrag) return;
+  if (timeDrag.moved) ignoreTimelineClickUntil = Date.now() + 220;
+  timeDrag = null;
+  riverWrap.classList.remove('dragging');
+  if (riverWrap.hasPointerCapture(e.pointerId)) riverWrap.releasePointerCapture(e.pointerId);
+};
+riverWrap.addEventListener('pointerup', endTimeDrag);
+riverWrap.addEventListener('pointercancel', endTimeDrag);
+riverWrap.addEventListener('dblclick', () => { if (vizMode === 'time') resetTimeRange(); });
+
+// ── 关系矩阵：同一条边在对称位置展示；社区筛选同时作用于行列。 ──
+function relationKey(a, b) { return `${Math.min(Number(a), Number(b))}:${Math.max(Number(a), Number(b))}`; }
+function relationColors(link) {
+  const types = String(link?.types || '');
+  const colors = [];
+  if (types.includes('因果关联')) colors.push('#c9a86a');
+  if (types.includes('语义血缘')) colors.push('#7fa3b0');
+  if (types.includes('同时段')) colors.push('#c9c2b8');
+  return colors.length ? colors : ['#c9c2b8'];
+}
+function renderMatrix() {
+  if (vizMode !== 'matrix') return;
+  const nodes = sortedNodes.filter(n => !hidden.has(n.category)).slice(0, 160);
+  matrixTable.replaceChildren();
+  if (!nodes.length) {
+    const row = document.createElement('tr');
+    const cell = document.createElement('td');
+    cell.textContent = '当前筛选没有事件';
+    row.appendChild(cell); matrixTable.appendChild(row);
+    return;
+  }
+  const links = new Map(DATA.links.map(link => [relationKey(link.source, link.target), link]));
+  const head = document.createElement('tr');
+  const corner = document.createElement('th');
+  corner.className = 'mx-corner'; corner.textContent = `事件 × 事件（${nodes.length}）`;
+  head.appendChild(corner);
+  nodes.forEach(n => {
+    const th = document.createElement('th');
+    th.className = 'mx-col'; th.title = n.name;
+    const label = document.createElement('span'); label.textContent = n.name;
+    th.appendChild(label);
+    th.addEventListener('click', () => focusNode(n.id));
+    head.appendChild(th);
+  });
+  matrixTable.appendChild(head);
+  nodes.forEach(rowNode => {
+    const row = document.createElement('tr');
+    const header = document.createElement('th');
+    header.className = 'mx-row'; header.title = rowNode.name;
+    const dot = document.createElement('span'); dot.className = 'mx-dot'; dot.style.background = DATA.categories[rowNode.category].itemStyle.color;
+    header.append(dot, document.createTextNode(rowNode.name));
+    header.addEventListener('click', () => focusNode(rowNode.id));
+    row.appendChild(header);
+    nodes.forEach(colNode => {
+      const cell = document.createElement('td');
+      const button = document.createElement('button');
+      button.type = 'button'; button.className = 'mx-cell';
+      if (rowNode.id === colNode.id) {
+        button.classList.add('diag'); button.disabled = true; button.title = rowNode.name;
+      } else {
+        const key = relationKey(rowNode.id, colNode.id);
+        const link = links.get(key);
+        if (!link) {
+          button.classList.add('empty'); button.disabled = true;
+        } else {
+          const colors = relationColors(link);
+          button.style.background = colors.length > 1
+            ? `linear-gradient(135deg, ${colors.map((color, i) => `${color} ${(i / colors.length) * 100}% ${((i + 1) / colors.length) * 100}%`).join(', ')})`
+            : colors[0];
+          button.title = `${rowNode.name} ↔ ${colNode.name}\\n${link.types}${link.extra ? '\\n' + link.extra : ''}`;
+          if (matrixPair === key) button.classList.add('selected');
+          button.addEventListener('click', () => {
+            matrixPair = key;
+            selectedNode = rowNode.id;
+            showDetail(rowNode.id);
+            renderEvents();
+            renderMatrix();
+            toast(`${rowNode.name} ↔ ${colNode.name} · ${link.types}`);
+          });
+        }
+      }
+      cell.appendChild(button); row.appendChild(cell);
+    });
+    matrixTable.appendChild(row);
+  });
+}
+
+// ── 四层事件：以事件角色分层，时间只负责把同层事件排开，不再制造「同时段」毛线。 ──
+function renderStrata() {
+  if (vizMode !== 'strata') return;
+  const nodes = sortedNodes.filter(n => !hidden.has(n.category));
+  const W = riverWrap.clientWidth;
+  if (!W || !nodes.length) return;
+
+  const dated = nodes.flatMap(n => [timeMs(n.time), timeMs(n.time_end)]).filter(v => v !== null);
+  if (!dated.length) {
+    riverSvg.replaceChildren();
+    const empty = svg('text', { x: 32, y: 64, fill: '#8d7f6d', 'font-size': 13 });
+    empty.textContent = '当前筛选没有可定位的事件时间';
+    riverSvg.appendChild(empty);
+    return;
+  }
+  let start = Math.min(...dated), end = Math.max(...dated);
+  const day = 24 * 60 * 60 * 1000;
+  if (end <= start) { start -= 30 * day; end += 30 * day; }
+  const pad = Math.max(10 * day, (end - start) * 0.035);
+  start -= pad; end += pad;
+  const left = 126, right = 32, top = 38, bottom = 38;
+  const x = value => {
+    const stamp = timeMs(value);
+    return stamp === null ? W - right - 8 : left + (stamp - start) / (end - start) * Math.max(1, W - left - right);
+  };
+  const kindOf = n => n.event_kind || ({ '瞬间': 'moment', '时期': 'period', '里程碑': 'milestone', '仪式': 'ritual' }[n.event_type] || 'moment');
+  const planes = [
+    { kind: 'ritual', label: '仪式', note: '反复确认', color: '#9a7a9a' },
+    { kind: 'milestone', label: '里程碑', note: '被辨认的转折', color: '#b58b59' },
+    { kind: 'period', label: '时期', note: '持续的背景', color: '#7197a5' },
+    { kind: 'moment', label: '瞬间', note: '发生的一刻', color: '#839578' },
+  ];
+  const arrange = list => {
+    const rowEnds = [];
+    const items = [...list].sort((a, b) => (a.time || '').localeCompare(b.time || '') || Number(a.id) - Number(b.id)).map(n => {
+      const x1 = x(n.time);
+      const hasRange = kindOf(n) === 'period' && timeMs(n.time_end) !== null && timeMs(n.time_end) > timeMs(n.time);
+      const x2 = hasRange ? x(n.time_end) : x1 + 13;
+      let row = rowEnds.findIndex(last => last < x1 - 7);
+      if (row < 0) { row = rowEnds.length; rowEnds.push(-Infinity); }
+      rowEnds[row] = Math.max(x1 + 13, x2);
+      return { n, x1, x2, row, hasRange };
+    });
+    return { items, rows: Math.max(1, rowEnds.length) };
+  };
+  planes.forEach(plane => Object.assign(plane, arrange(nodes.filter(n => kindOf(n) === plane.kind))));
+  let yCursor = top;
+  planes.forEach(plane => {
+    plane.height = Math.max(104, 62 + plane.rows * 18);
+    plane.top = yCursor;
+    plane.center = yCursor + plane.height / 2;
+    plane.items.forEach(item => { item.y = plane.top + 46 + item.row * 18; });
+    yCursor += plane.height + 10;
+  });
+  const H = Math.max(riverWrap.clientHeight || 0, yCursor + bottom);
+  riverSvg.setAttribute('width', W);
+  riverSvg.setAttribute('height', H);
+  riverSvg.setAttribute('viewBox', `0 0 ${W} ${H}`);
+  riverSvg.replaceChildren();
+
+  const defs = svg('defs');
+  defs.innerHTML = '<marker id="strataArrowGold" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="#c9a86a"/></marker>';
+  riverSvg.appendChild(defs);
+  const tickCount = Math.max(3, Math.min(8, Math.floor((W - left - right) / 120)));
+  for (let i = 0; i <= tickCount; i++) {
+    const stamp = start + (end - start) * i / tickCount;
+    const date = new Date(stamp);
+    const px = left + (W - left - right) * i / tickCount;
+    riverSvg.appendChild(svg('line', { x1: px, x2: px, y1: top - 12, y2: H - bottom + 4, stroke: '#e8dfd4', 'stroke-width': 1, 'stroke-dasharray': '2 5' }));
+    const label = svg('text', { x: px + 3, y: H - 14, fill: '#a89f94', 'font-size': 10, 'font-family': 'Courier New, monospace' });
+    label.textContent = `${date.getUTCFullYear()}-${String(date.getUTCMonth() + 1).padStart(2, '0')}`;
+    riverSvg.appendChild(label);
+  }
+  planes.forEach(plane => {
+    riverSvg.appendChild(svg('rect', { x: left, y: plane.top, width: W - left - right, height: plane.height, rx: 11, fill: plane.color, 'fill-opacity': 0.075 }));
+    riverSvg.appendChild(svg('line', { x1: left, x2: W - right, y1: plane.top + 30, y2: plane.top + 30, stroke: plane.color, 'stroke-width': 1, 'stroke-opacity': 0.28 }));
+    const label = svg('text', { x: 18, y: plane.top + 23, fill: plane.color, 'font-size': 15, 'font-weight': 600, 'font-family': '"Noto Serif SC","Songti SC",serif' });
+    label.textContent = plane.label;
+    const note = svg('text', { x: 18, y: plane.top + 41, fill: '#a89f94', 'font-size': 10 });
+    note.textContent = plane.note;
+    riverSvg.append(label, note);
+  });
+
+  const pos = {};
+  planes.forEach(plane => plane.items.forEach(item => { pos[item.n.id] = [(item.x1 + Math.max(item.x1 + 13, item.x2)) / 2, item.y]; }));
+  const visibleIds = new Set(nodes.map(n => n.id));
+  const edgeLayer = svg('g');
+  const drawRelation = (from, to, style, title) => {
+    const a = pos[from], b = pos[to];
+    if (!a || !b) return;
+    const midX = (a[0] + b[0]) / 2;
+    const midY = (a[1] + b[1]) / 2 - Math.min(54, 20 + Math.abs(a[0] - b[0]) * 0.09);
+    const path = svg('path', { d: `M${a[0]} ${a[1]} Q${midX} ${midY} ${b[0]} ${b[1]}`, fill: 'none', ...style, cursor: 'pointer' });
+    path.addEventListener('mouseover', e => showTipAt(e, `<div class="t-link">${title}</div>`));
+    path.addEventListener('mouseout', () => { tip.style.display = 'none'; });
+    edgeLayer.appendChild(path);
+  };
+  const selectedCausal = (DATA.causal || []).filter(edge => visibleIds.has(edge.from) && visibleIds.has(edge.to) && (selectedNode === null || edge.from === selectedNode || edge.to === selectedNode));
+  selectedCausal.forEach(edge => {
+    const details = [edge.name ? `「${esc(edge.name)}」` : '因果关联', edge.reason ? esc(edge.reason) : '', edge.directed ? '有明确方向' : '方向待补'].filter(Boolean).join('<br>');
+    drawRelation(edge.from, edge.to, { stroke: '#c9a86a', 'stroke-width': selectedNode === null ? 1.35 : 2.1, 'stroke-opacity': selectedNode === null ? 0.68 : 0.95, 'stroke-dasharray': edge.directed ? '5 4' : '2 4', ...(edge.directed ? { 'marker-end': 'url(#strataArrowGold)' } : {}) }, details);
+  });
+  let thematic = DATA.links.filter(link => String(link.types).includes('语义血缘') && visibleIds.has(link.source) && visibleIds.has(link.target));
+  if (selectedNode !== null) thematic = thematic.filter(link => link.source === selectedNode || link.target === selectedNode);
+  else thematic = thematic.sort((a, b) => (b.semantic_score || 0) - (a.semantic_score || 0)).slice(0, 55);
+  thematic.forEach(link => drawRelation(link.source, link.target, { stroke: '#7fa3b0', 'stroke-width': selectedNode === null ? 0.8 : 1.4, 'stroke-opacity': selectedNode === null ? 0.26 : 0.7 }, `语义血缘${link.semantic_score ? ` · ${(link.semantic_score * 100).toFixed(0)}%` : ''}`));
+  riverSvg.appendChild(edgeLayer);
+
+  const nodeLayer = svg('g');
+  const shapeFor = item => {
+    const n = item.n, color = n.itemStyle.color;
+    if (kindOf(n) === 'period') return svg('rect', { x: item.x1, y: item.y - 5.5, width: Math.max(13, item.x2 - item.x1), height: 11, rx: 5.5, fill: color, 'fill-opacity': 0.82, stroke: color, 'stroke-width': 1.1 });
+    if (kindOf(n) === 'milestone') return svg('polygon', { points: `${item.x1},${item.y - 7} ${item.x1 + 7},${item.y} ${item.x1},${item.y + 7} ${item.x1 - 7},${item.y}`, fill: color, stroke: color, 'stroke-width': 1.1 });
+    if (kindOf(n) === 'ritual') return svg('polygon', { points: `${item.x1 - 6},${item.y - 4} ${item.x1},${item.y - 7} ${item.x1 + 6},${item.y - 4} ${item.x1 + 6},${item.y + 4} ${item.x1},${item.y + 7} ${item.x1 - 6},${item.y + 4}`, fill: color, stroke: color, 'stroke-width': 1.1 });
+    return svg('circle', { cx: item.x1, cy: item.y, r: Math.max(4.2, (n.symbolSize || 10) / 2.7), fill: color, stroke: color, 'stroke-width': 1.1 });
+  };
+  planes.forEach(plane => plane.items.forEach(item => {
+    const shape = shapeFor(item);
+    if (selectedNode === item.n.id) shape.classList.add('strata-selected');
+    const group = svg('g', { cursor: 'pointer' });
+    group.appendChild(shape);
+    const canLabel = item.n.id === selectedNode || (kindOf(item.n) === 'period' && item.x2 - item.x1 > 82) || (kindOf(item.n) === 'milestone' && Number(item.n.importance || 0) >= 0.88);
+    if (canLabel) {
+      const title = svg('text', { x: kindOf(item.n) === 'period' ? item.x1 + 5 : item.x1 + 9, y: item.y - 8, fill: '#6e645a', 'font-size': 10, 'pointer-events': 'none' });
+      title.textContent = item.n.name;
+      group.appendChild(title);
+    }
+    group.addEventListener('mouseover', e => showTipAt(e, nodeTipHTML(item.n)));
+    group.addEventListener('mouseout', () => { tip.style.display = 'none'; });
+    group.addEventListener('click', e => { e.stopPropagation(); focusNode(item.n.id); });
+    nodeLayer.appendChild(group);
+  }));
+  riverSvg.appendChild(nodeLayer);
+}
+
+// ── 四层时间轴（2026-09-09 重设计）：仪式/瞬间/时期/里程碑 四条横向时间轨，向右滚动。 ──
+// 时期=线段(两端圆点, 重叠不叠色) · 瞬间=孤立点+虚线链 · 仪式=孤立点+实线链
+// 里程碑=右开渐变线(半透明→不透明, 下一个里程碑重新从半透明开始) · 因果/语义边纵向连接四轨
+const TL_ORDER = ['ritual', 'moment', 'period', 'milestone'];   // 从上到下
+const TL_LANE = {
+  ritual:    { label: '仪式',   color: '#cd7f8a' },
+  moment:    { label: '瞬间',   color: '#7fa3b0' },
+  period:    { label: '时期',   color: '#8b9e6b' },
+  milestone: { label: '里程碑', color: '#c9a86a' },
+};
+let tlView = null;      // {t0, t1} 可视时间窗(ms)
+let tlDrag = null;
+let tlGeom = null;      // 渲染时记下 {padL, padR, plotW}，拖动换算用
+
+function strataKind(n) {
+  return n.event_kind || ({ '瞬间': 'moment', '时期': 'period', '里程碑': 'milestone', '仪式': 'ritual' }[n.event_type] || 'moment');
+}
+
+function tlMs(s) { const v = s ? Date.parse(s) : NaN; return Number.isFinite(v) ? v : null; }
+function tlFit() {
+  let lo = Infinity, hi = -Infinity;
+  DATA.nodes.forEach(n => {
+    const a = tlMs(n.time), b = tlMs(n.time_end) ?? a;
+    if (a !== null) { lo = Math.min(lo, a); hi = Math.max(hi, b); }
+  });
+  if (!Number.isFinite(lo)) { const now = Date.now(); lo = now - 30 * 864e5; hi = now; }
+  if (hi <= lo) hi = lo + 864e5;
+  const pad = Math.max((hi - lo) * 0.06, 6 * 864e5);
+  tlView = { t0: lo - pad, t1: hi + pad };
+}
+
+function renderLayered3D() {
+  if (vizMode !== 'strata') return;
+  const W = riverWrap.clientWidth, H = riverWrap.clientHeight;
+  if (!W || !H) return;
+  if (!tlView) tlFit();
+  riverSvg.setAttribute('viewBox', `0 0 ${W} ${H}`);
+  riverSvg.setAttribute('width', W);
+  riverSvg.setAttribute('height', H);
+  riverSvg.replaceChildren();
+
+  const padL = 74, padR = 30, padT = 24, axisH = 36;
+  const plotW = W - padL - padR, plotH = H - padT - axisH;
+  tlGeom = { padL, padR, plotW };
+  const laneY = i => padT + plotH * (i + 0.5) / TL_ORDER.length;
+  const yOf = kind => laneY(TL_ORDER.indexOf(kind));
+  const xOf = t => padL + (t - tlView.t0) / (tlView.t1 - tlView.t0) * plotW;
+
+  const visible = DATA.nodes.filter(n => !hidden.has(n.category));
+  const byKind = k => visible.filter(n => strataKind(n) === k && tlMs(n.time) !== null)
+    .sort((a, b) => tlMs(a.time) - tlMs(b.time) || a.id - b.id);
+
+  // 选中事件滚出视野 → 时间窗平移把它带回来（居中）
+  if (selectedNode !== null && !tlDrag) {
+    const t = nodeById[selectedNode] ? tlMs(nodeById[selectedNode].time) : null;
+    if (t !== null) {
+      const x = xOf(t);
+      if (x < padL + 6 || x > W - padR - 6) {
+        const span = tlView.t1 - tlView.t0;
+        tlView = { t0: t - span / 2, t1: t + span / 2 };
+      }
+    }
+  }
+
+  // ── 布局：每轨的点（x 相近的纵向散开，避免同刻事件叠死）──
+  const spread = list => {
+    const out = []; let cluster = [];
+    const flush = () => {
+      const m = cluster.length;
+      cluster.forEach((n, k) => out.push({ n, x: xOf(tlMs(n.time)), dy: m > 1 ? (k - (m - 1) / 2) * 5.5 : 0 }));
+      cluster = [];
+    };
+    list.forEach(n => {
+      if (cluster.length && xOf(tlMs(n.time)) - xOf(tlMs(cluster[cluster.length - 1].time)) > 9) flush();
+      cluster.push(n);
+    });
+    flush();
+    return out;
+  };
+  const layout = {};
+  TL_ORDER.forEach(k => { layout[k] = spread(byKind(k)); });
+  const posOf = new Map();   // id → {x, y}，跨轨连线端点用
+  TL_ORDER.forEach(k => {
+    const py = yOf(k);
+    if (k === 'period') {
+      layout[k].forEach(({ n, x }) => {
+        const b = tlMs(n.time_end) ?? tlMs(n.time);
+        posOf.set(n.id, { x: (x + xOf(b)) / 2, y: py });
+      });
+    } else {
+      layout[k].forEach(({ n, x, dy }) => posOf.set(n.id, { x, y: py + dy }));
+    }
+  });
+  const placedIds = new Set(posOf.keys());
+
+  // ── defs：里程碑逐段渐变(userSpaceOnUse，水平 line 的 objectBoundingBox 渐变不渲染) + 因果箭头 ──
+  const defs = svg('defs');
+  defs.innerHTML = '<marker id="tlArrow" viewBox="0 0 10 10" refX="8.5" refY="5" markerWidth="6.5" markerHeight="6.5" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#b8944f"/></marker>';
+  riverSvg.appendChild(defs);
+
+  // ── 月份刻度 + 竖向细网格 + 底轴 ──
+  const grid = svg('g');
+  const g0 = new Date(tlView.t0), g1 = new Date(tlView.t1);
+  const monthSpan = (g1.getFullYear() - g0.getFullYear()) * 12 + (g1.getMonth() - g0.getMonth());
+  const step = Math.max(1, Math.ceil(monthSpan / 10));
+  for (let d = new Date(g0.getFullYear(), g0.getMonth(), 1); d.getTime() <= tlView.t1; d.setMonth(d.getMonth() + step)) {
+    const x = xOf(d.getTime());
+    if (x < padL - 0.5 || x > W - padR + 0.5) continue;
+    grid.appendChild(svg('line', { x1: x, y1: padT, x2: x, y2: padT + plotH, stroke: '#d8cdbf', 'stroke-opacity': 0.32, 'stroke-width': 0.8 }));
+    const lab = svg('text', { x: x + 4, y: padT + plotH + 17, fill: '#a89f94', 'font-size': 10, 'font-family': "'Courier New',monospace" });
+    lab.textContent = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+    grid.appendChild(lab);
+  }
+  grid.appendChild(svg('line', { x1: padL, y1: padT + plotH + 5, x2: W - padR, y2: padT + plotH + 5, stroke: '#d8cdbf', 'stroke-opacity': 0.8, 'stroke-width': 1 }));
+  riverSvg.appendChild(grid);
+
+  // ── 四轨本体 ──
+  const laneLayer = svg('g');
+  TL_ORDER.forEach(kind => {
+    const lane = TL_LANE[kind], py = yOf(kind), items = layout[kind];
+
+    // 轨标签（左缘）
+    const tag = svg('text', { x: 12, y: py - 5, fill: lane.color, 'font-size': 12.5, 'font-weight': 600, 'letter-spacing': 2, 'font-family': '"Noto Serif SC","Songti SC",serif' });
+    tag.textContent = lane.label;
+    laneLayer.appendChild(tag);
+    const cnt = svg('text', { x: 12, y: py + 11, fill: '#b0a69b', 'font-size': 9.5, 'font-family': "'Courier New',monospace" });
+    cnt.textContent = String(items.length);
+    laneLayer.appendChild(cnt);
+
+    if (kind === 'period') {
+      // 基线：整轨半透明；有时期的段落由「合并带」加重（重叠区只画一次 → 不叠色）
+      laneLayer.appendChild(svg('line', { x1: padL, y1: py, x2: W - padR, y2: py, stroke: lane.color, 'stroke-opacity': 0.16, 'stroke-width': 1.4 }));
+      const segs = items.map(({ n, x }) => ({ n, x1: x, x2: Math.max(xOf(tlMs(n.time_end) ?? tlMs(n.time)), x + 2) })).sort((a, b) => a.x1 - b.x1);
+      const band = [];
+      segs.forEach(s => {
+        const last = band[band.length - 1];
+        if (last && s.x1 <= last.x2) last.x2 = Math.max(last.x2, s.x2);
+        else band.push({ x1: s.x1, x2: s.x2 });
+      });
+      band.forEach(b => laneLayer.appendChild(svg('line', { x1: b.x1, y1: py, x2: b.x2, y2: py, stroke: lane.color, 'stroke-opacity': 0.6, 'stroke-width': 3.8, 'stroke-linecap': 'round' })));
+      // 选中的时期单独提亮
+      segs.filter(s => s.n.id === selectedNode).forEach(s =>
+        laneLayer.appendChild(svg('line', { x1: s.x1, y1: py, x2: s.x2, y2: py, stroke: lane.color, 'stroke-opacity': 0.95, 'stroke-width': 4.4, 'stroke-linecap': 'round' })));
+      // 端点圆点 + 隐形热区（挂在节点层之前的热区层）
+      segs.forEach(s => {
+        [s.x1, s.x2].forEach(x => {
+          const r = 3 + (Number(s.n.importance) || 0.5) * 2;
+          const c = svg('circle', { cx: x, cy: py, r: s.n.id === selectedNode ? r + 1.4 : r, fill: lane.color, stroke: s.n.id === selectedNode ? '#4a423a' : '#fffdfa', 'stroke-width': s.n.id === selectedNode ? 1.8 : 1.2 });
+          if (s.n.id === selectedNode) c.classList.add('strata-selected');
+          bindNode(c, s.n);
+          laneLayer.appendChild(c);
+        });
+        const hot = svg('line', { x1: s.x1, y1: py, x2: s.x2, y2: py, stroke: '#000', 'stroke-opacity': 0, 'stroke-width': 14, 'pointer-events': 'stroke', cursor: 'pointer' });
+        bindNode(hot, s.n);
+        laneLayer.appendChild(hot);
+      });
+    } else if (kind === 'milestone') {
+      // 基线只画到第一个里程碑之前；之后由渐变线接管（右开，下一个里程碑重新从半透明开始）
+      const first = items.length ? items[0].x : W - padR;
+      laneLayer.appendChild(svg('line', { x1: padL, y1: py, x2: first, y2: py, stroke: lane.color, 'stroke-opacity': 0.16, 'stroke-width': 1.4 }));
+      items.forEach(({ n, x }, i) => {
+        const x2 = i + 1 < items.length ? items[i + 1].x : W - padR;
+        const end = Math.max(x2, x + 2);
+        const gid = `tlGrad${n.id}`;
+        const grad = svg('linearGradient', { id: gid, gradientUnits: 'userSpaceOnUse', x1: x, y1: py, x2: end, y2: py });
+        grad.appendChild(svg('stop', { offset: '0%', 'stop-color': lane.color, 'stop-opacity': 0.25 }));
+        grad.appendChild(svg('stop', { offset: '100%', 'stop-color': lane.color, 'stop-opacity': 0.95 }));
+        defs.appendChild(grad);
+        const line = svg('line', { x1: x, y1: py, x2: end, y2: py, stroke: `url(#${gid})`, 'stroke-width': 3, 'stroke-linecap': 'butt' });
+        bindNode(line, n);
+        laneLayer.appendChild(line);
+      });
+    } else {
+      // 瞬间/仪式：整轨半透明基线 + 孤立点链（瞬间虚线 / 仪式实线）
+      laneLayer.appendChild(svg('line', { x1: padL, y1: py, x2: W - padR, y2: py, stroke: lane.color, 'stroke-opacity': 0.16, 'stroke-width': 1.4 }));
+      if (items.length > 1) {
+        laneLayer.appendChild(svg('polyline', {
+          points: items.map(it => `${it.x},${py + it.dy}`).join(' '),
+          fill: 'none', stroke: lane.color, 'stroke-opacity': 0.34, 'stroke-width': 1.15,
+          ...(kind === 'moment' ? { 'stroke-dasharray': '3 4' } : {}),
+        }));
+      }
+    }
+  });
+  riverSvg.appendChild(laneLayer);
+
+  // ── 纵向跨轨连线：因果(常显, 选中时只显相关) + 语义(仅选中时) ──
+  const edgeLayer = svg('g');
+  const curve = (x1, y1, x2, y2) => `M ${x1} ${y1} C ${x1} ${(y1 + y2) / 2}, ${x2} ${(y1 + y2) / 2}, ${x2} ${y2}`;
+  const bindEdge = (el, title) => {
+    el.addEventListener('mouseover', e => showTipAt(e, `<div class="t-link">${title}</div>`));
+    el.addEventListener('mouseout', () => { tip.style.display = 'none'; });
+  };
+  (DATA.causal || []).forEach(edge => {
+    if (!placedIds.has(edge.from) || !placedIds.has(edge.to)) return;
+    if (selectedNode !== null && edge.from !== selectedNode && edge.to !== selectedNode) return;
+    const a = posOf.get(edge.from), b = posOf.get(edge.to);
+    const sel = selectedNode !== null;
+    const title = [edge.name ? `「${esc(edge.name)}」` : '因果关联', edge.reason ? esc(edge.reason) : '', edge.directed ? '明确方向' : '方向待补'].filter(Boolean).join('<br>');
+    const path = svg('path', {
+      d: curve(a.x, a.y, b.x, b.y), fill: 'none', stroke: '#b8944f',
+      'stroke-width': sel ? 2.1 : 1.35, 'stroke-opacity': sel ? 0.95 : 0.6,
+      'stroke-dasharray': edge.directed ? '5 4' : '2 4', cursor: 'pointer',
+      ...(edge.directed ? { 'marker-end': 'url(#tlArrow)' } : {}),
+    });
+    bindEdge(path, title);
+    edgeLayer.appendChild(path);
+  });
+  if (selectedNode !== null) {
+    DATA.links.filter(link => String(link.types).includes('语义血缘') && placedIds.has(link.source) && placedIds.has(link.target)
+      && (link.source === selectedNode || link.target === selectedNode)).forEach(link => {
+      const a = posOf.get(link.source), b = posOf.get(link.target);
+      const path = svg('path', { d: curve(a.x, a.y, b.x, b.y), fill: 'none', stroke: '#6b93a3', 'stroke-width': 1.4, 'stroke-opacity': 0.72, cursor: 'pointer' });
+      bindEdge(path, `语义血缘${link.semantic_score ? ` · ${(link.semantic_score * 100).toFixed(0)}%` : ''}`);
+      edgeLayer.appendChild(path);
+    });
+  }
+  riverSvg.appendChild(edgeLayer);
+
+  // ── 节点圆点（最上层；时期端点已在轨层画过，这里只画瞬间/仪式/里程碑）──
+  const nodeLayer = svg('g');
+  ['moment', 'ritual', 'milestone'].forEach(kind => {
+    const lane = TL_LANE[kind], py = yOf(kind);
+    layout[kind].forEach(({ n, x, dy }) => {
+      const sel = n.id === selectedNode;
+      const r = (kind === 'milestone' ? 3.4 : 2.9) + (Number(n.importance) || 0.5) * (kind === 'milestone' ? 2.4 : 2);
+      const c = svg('circle', { cx: x, cy: py + dy, r: sel ? r + 1.6 : r, fill: lane.color, stroke: sel ? '#4a423a' : '#fffdfa', 'stroke-width': sel ? 1.9 : 1.2 });
+      if (sel) c.classList.add('strata-selected');
+      bindNode(c, n);
+      nodeLayer.appendChild(c);
+      if (sel) {
+        const t = svg('text', { x: x + r + 6, y: py + dy - r - 4, fill: '#4a423a', 'font-size': 11.5, 'font-weight': 600, 'paint-order': 'stroke', stroke: '#fffdfa', 'stroke-width': 3, 'stroke-linejoin': 'round' });
+        t.textContent = n.name;
+        nodeLayer.appendChild(t);
+      }
+    });
+  });
+  riverSvg.appendChild(nodeLayer);
+
+  function bindNode(el, n) {
+    el.addEventListener('mouseover', e => showTipAt(e, nodeTipHTML(n)));
+    el.addEventListener('mouseout', () => { tip.style.display = 'none'; });
+    el.addEventListener('click', e => { e.stopPropagation(); focusNode(n.id); });
+  }
+}
+
+// ── 拖动横向滚动 + 滚轮缩放（锚定光标时间点）──
+strataSvg.addEventListener('pointerdown', e => {
+  if (vizMode !== 'strata') return;
+  if (e.target.closest && e.target.closest('circle,line,text,path')) return;
+  tlDrag = { x: e.clientX, t0: tlView.t0, t1: tlView.t1, plotW: tlGeom ? tlGeom.plotW : 1 };
+  strataSvg.setPointerCapture(e.pointerId);
+  strataSvg.classList.add('dragging');
+});
+strataSvg.addEventListener('pointermove', e => {
+  if (!tlDrag) return;
+  const dt = (tlDrag.x - e.clientX) * (tlDrag.t1 - tlDrag.t0) / tlDrag.plotW;
+  tlView = { t0: tlDrag.t0 + dt, t1: tlDrag.t1 + dt };
+  renderLayered3D();
+});
+const endTlDrag = e => {
+  if (!tlDrag) return;
+  tlDrag = null;
+  strataSvg.classList.remove('dragging');
+  if (strataSvg.hasPointerCapture(e.pointerId)) strataSvg.releasePointerCapture(e.pointerId);
+};
+strataSvg.addEventListener('pointerup', endTlDrag);
+strataSvg.addEventListener('pointercancel', endTlDrag);
+strataSvg.addEventListener('wheel', e => {
+  if (vizMode !== 'strata' || !tlGeom) return;
+  e.preventDefault();
+  const rect = strataSvg.getBoundingClientRect();
+  const cx = e.clientX - rect.left;
+  const tc = tlView.t0 + (cx - tlGeom.padL) / tlGeom.plotW * (tlView.t1 - tlView.t0);
+  const f = Math.exp(e.deltaY * 0.0012);
+  let span = (tlView.t1 - tlView.t0) * f;
+  span = Math.max(5 * 864e5, Math.min(1826 * 864e5, span));
+  const ratio = span / (tlView.t1 - tlView.t0);
+  tlView = { t0: tc - (tc - tlView.t0) * ratio, t1: tc + (tlView.t1 - tc) * ratio };
+  renderLayered3D();
+}, { passive: false });
+document.getElementById('strataReset').onclick = () => { tlFit(); renderLayered3D(); };
+
+window.addEventListener('resize', () => {
+  chart.resize();
+  if (vizMode === 'strata') renderLayered3D();
+});
+  if (vizMode !== 'net') setMode(vizMode);   // 恢复上次选择的模式
+  renderEvents();
+}
+</script>
+</body>
+</html>
+

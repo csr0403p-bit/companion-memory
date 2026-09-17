@@ -1,0 +1,15 @@
+[Unit]
+Description=local embedding service (Qwen3-Embedding-0.6B, CPU)
+After=network.target
+
+[Service]
+Type=simple
+User=agent
+Group=agent
+WorkingDirectory=/home/agent/archive-mcp/embed-local
+ExecStart=/usr/bin/python3 /home/agent/archive-mcp/embed-local/embed_server.py
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

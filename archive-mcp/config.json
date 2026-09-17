@@ -1,0 +1,8 @@
+{
+  "port": 3012,
+  "appToken": "CHANGE_ME_APP_TOKEN",
+  "adminToken": "CHANGE_ME_ADMIN_TOKEN",
+  "dataDir": "data",
+  "embedPort": 3013,
+  "thematicThreshold": 0.748
+}

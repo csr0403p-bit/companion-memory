@@ -1,0 +1,16 @@
+[Unit]
+Description=agent archive service (Bearer + MCP + REST, port 3012)
+After=network.target
+
+[Service]
+Type=simple
+User=agent
+Group=agent
+WorkingDirectory=/home/agent/archive-mcp
+ExecStart=/usr/local/bin/node server.js
+Environment=PORT=3012
+Restart=always
+RestartSec=3
+
+[Install]
+WantedBy=multi-user.target

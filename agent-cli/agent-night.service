@@ -1,0 +1,12 @@
+[Unit]
+Description=agent night memory consolidation (causal review + community rename)
+After=network-online.target archive-mcp.service
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=agent
+WorkingDirectory=/home/agent/agent-cli
+ExecStart=/usr/local/bin/node /home/agent/agent-cli/night.js
+TimeoutStartSec=50min
+# 临时目录与日志走 journal: journalctl -u agent-night

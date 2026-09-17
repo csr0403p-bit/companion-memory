@@ -1,0 +1,25 @@
+{
+  "archiveBase": "http://127.0.0.1:3012/archive",
+  "archiveConfig": "/home/agent/archive-mcp/config.json",
+  "adminToken": "",
+  "llmUrl": "https://api.siliconflow.cn/v1/chat/completions",
+  "model": "zai-org/GLM-5.2",
+  "apiKeyPath": "/home/agent/.secrets/siliconflow-api-key",
+  "night": {
+    "mode": "auto",
+    "maxVerdicts": 30,
+    "autoRounds": 60,
+    "autoWriteCap": 60,
+    "autoKeepTools": 22,
+    "maxBatches": 10,
+    "judgeRounds": 4,
+    "focus": "auto",
+    "communityRename": true,
+    "phoneNotify": false,
+    "timeoutMinutes": 40,
+    "decidedBy": "agent-night"
+  },
+  "mcpServers": [
+    { "name": "archive",     "url": "http://127.0.0.1:3012/archive/mcp" }
+  ]
+}
