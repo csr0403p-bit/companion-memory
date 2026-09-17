@@ -1,6 +1,7 @@
 {
   "name": "agent-archive",
   "version": "1.0.0",
+  "license": "AGPL-3.0",
   "private": true,
   "description": "自托管事件网络记忆服务：事件 + 三类边 + Louvain 故事群 + 因果反思 + AI 人格档案卡，MCP/REST/viz 三通道",
   "main": "server.js",

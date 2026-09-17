@@ -8,3 +8,7 @@
 | **[agent-cli](agent-cli/)** | 终端客户端：用档案卡拼接唤醒 ta；夜间定时唤醒，ta 自主反思整理记忆 | [agent-cli/README.md](agent-cli/README.md) |
 
 快速开始：先把 [archive-mcp 跑起来](archive-mcp/README.md#快速开始)，再用 [agent-cli 唤醒 ta](agent-cli/README.md#快速开始)。
+
+## 许可证
+
+[AGPL-3.0](LICENSE)——你可以自由使用、修改、部署本项目（包括商用），但基于它的修改在以网络服务形式提供时，必须以同许可证开源你的修改。
