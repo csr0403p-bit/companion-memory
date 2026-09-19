@@ -288,6 +288,7 @@ function dbNightUpsertReport(r) {
     dream_words: typeof r.dream_words === 'string' ? r.dream_words : null,
     verdicts, renames, notes: Array.isArray(r.notes) ? r.notes : [],
     timeline: Array.isArray(r.timeline) ? r.timeline : [],
+    tokens: r.tokens && typeof r.tokens === 'object' ? r.tokens : null,
   };
   DB.prepare(`INSERT INTO night_reports (date, verdicts_total, link, reject, defer, done, renames, queue_causes, queue_effects, elapsed_min, detail_json, created_at)
     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
@@ -2633,7 +2634,7 @@ async function handleRest(ctx) {
     if (!row) return err('report not found', 404);
     let detail = {};
     try { detail = JSON.parse(row.detail_json || '{}'); } catch {}
-    return json({ ok: true, report: { ...dbNightReportSummary(row), dream_words: detail.dream_words ?? null, verdicts: detail.verdicts ?? [], renames: detail.renames ?? [], notes: detail.notes ?? [], timeline: detail.timeline ?? [] } });
+    return json({ ok: true, report: { ...dbNightReportSummary(row), dream_words: detail.dream_words ?? null, verdicts: detail.verdicts ?? [], renames: detail.renames ?? [], notes: detail.notes ?? [], timeline: detail.timeline ?? [], tokens: detail.tokens ?? null } });
   }
   if (subpath === '/night-report' && method === 'POST') {
     if (!isAdmin) return err('unauthorized', 401);

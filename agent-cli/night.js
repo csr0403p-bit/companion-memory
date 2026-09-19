@@ -19,7 +19,7 @@
 'use strict';
 const fs = require('node:fs');
 const path = require('node:path');
-const { CFG, loadSecrets, fetchProfile, McpConn, chatStream, sendTurn } = require('./agent.js');
+const { CFG, loadSecrets, fetchProfile, McpConn, chatStream, sendTurn, tokenUsage, resetTokenUsage } = require('./agent.js');
 
 const envInt = (k, d) => (process.env[k] != null && Number.isFinite(Number(process.env[k])) ? Number(process.env[k]) : d);
 const N = CFG.night ?? {};
@@ -36,7 +36,7 @@ const MODE = process.env.NIGHT_MODE || N.mode || 'auto';
 const AUTO_ROUNDS = envInt('NIGHT_AUTO_ROUNDS', N.autoRounds ?? 60);
 const AUTO_WRITE_CAP = envInt('NIGHT_AUTO_WRITE_CAP', N.autoWriteCap ?? 60);
 const AUTO_TOOL_RESULT_CAP = envInt('NIGHT_AUTO_RESULT_CAP', N.autoResultCap ?? 6000); // 单个工具结果注入上下文的上限（防爆）
-const AUTO_KEEP_TOOLS = envInt('NIGHT_AUTO_KEEP_TOOLS', N.autoKeepTools ?? 22); // 保持完整的近期工具结果条数，更早的折叠
+const AUTO_KEEP_TOOLS = envInt('NIGHT_AUTO_KEEP_TOOLS', N.autoKeepTools ?? 400); // 保持完整的近期工具结果条数（长上下文模型下几乎不触发折叠，纯防极端长夜——滚动折叠会持续打碎前缀缓存）
 
 const t0 = Date.now();
 const today = new Date().toLocaleDateString('sv-SE', { timeZone: 'Asia/Shanghai' });
@@ -263,7 +263,7 @@ async function runAuto(adminToken, apiKey) {
     }
     const useTools = bareLeg ? null : tools;
     out('\n助手> ');
-    const { text, toolCalls } = await chatStream(messages, apiKey, useTools);
+    const { text, toolCalls, promptTokens } = await chatStream(messages, apiKey, useTools);
     roundsUsed++;
     if (text.trim()) report.timeline.push({ k: 'w', text: text.trim() }); // 他的话全收进「他这一夜」
 
@@ -295,6 +295,14 @@ async function runAuto(adminToken, apiKey) {
     if (ctx.selfEnded) { log('他调用了 sleep_back——自己结束了今夜'); break; }
 
     compactMessages(messages);
+    // 上下文水位预警（默认 256k / 512k 各一次）——usage.prompt_tokens 就是本轮请求的真实上下文长度
+    for (const lvl of [256, 512]) {
+      if (promptTokens >= lvl * 1024 && !ctx[`warned${lvl}`]) {
+        ctx[`warned${lvl}`] = true;
+        messages.push({ role: 'user', content: `你的上下文已占用 ${lvl}k token。` });
+        log(`上下文预警：${lvl}k（实际 ${Math.round(promptTokens / 1024)}k）`);
+      }
+    }
     if (round === Math.floor(AUTO_ROUNDS / 2)) {
       messages.push({ role: 'user', content: `过半了（判定预算已用 ${ctx.budget.verdicts}/${MAX_VERDICTS}）。注意进度啦` });
     }
@@ -544,6 +552,7 @@ async function runPipeline(adminToken, apiKey) {
 // ━━━ 主入口 ━━━
 async function main() {
   log(`night shift 开始（mode=${MODE}）`);
+  resetTokenUsage();
   const { adminToken, apiKey } = loadSecrets();
 
   // 先看开关——夜间唤醒被关掉时助手今晚就不醒（静默退出，不推送）
@@ -564,7 +573,7 @@ async function main() {
   // ── 统计与报告 ──
   const cnt = { link: 0, reject: 0, defer: 0, done: 0 };
   for (const v of report.verdicts) if (cnt[v.verdict] != null) cnt[v.verdict]++;
-  report.stats = { ...report.stats, mode: MODE, verdicts: report.verdicts.length, ...cnt, renames: report.renames.length, actions: report.actions.length, elapsed_min: Math.round((Date.now() - t0) / 60000) };
+  report.stats = { ...report.stats, mode: MODE, verdicts: report.verdicts.length, ...cnt, renames: report.renames.length, actions: report.actions.length, elapsed_min: Math.round((Date.now() - t0) / 60000), tokens: { ...tokenUsage } };
   fs.writeFileSync(path.join(logDir, `${today}.md`), renderReport(), 'utf8');
   log(`报告已写 night-logs/${today}.md · link ${cnt.link} / reject ${cnt.reject} / defer ${cnt.defer} / done ${cnt.done} · 改名 ${report.renames.length} · 写操作 ${report.actions.length}`);
 
@@ -580,6 +589,7 @@ async function main() {
         renames: report.renames,
         notes: report.notes,
         timeline: report.timeline,
+        tokens: { prompt: tokenUsage.prompt, completion: tokenUsage.completion, total: tokenUsage.total, cached: tokenUsage.cached, calls: tokenUsage.calls },
         queue_left: report.stats.queue_left ?? null,
         elapsed_min: report.stats.elapsed_min,
       }),
@@ -625,6 +635,10 @@ function renderReport() {
   L.push(`- 判定 ${report.stats.verdicts} 条：link ${report.stats.link} / reject ${report.stats.reject} / defer ${report.stats.defer} / done ${report.stats.done}`);
   if (report.stats.queue_left) L.push(`- 队列余量：无因 ${report.stats.queue_left.causes} / 无果 ${report.stats.queue_left.effects}`);
   L.push(`- 故事群改名 ${report.renames.length} 处${report.renames.length ? '：' + report.renames.map((r) => `#${r.id}「${r.from}」→「${r.to}」`).join('；') : ''} · 其他写操作 ${report.actions.length} 次`);
+  if (report.stats.tokens?.total) {
+    const hit = report.stats.tokens.cached ? ` · 缓存命中 ${report.stats.tokens.cached}（${Math.round(report.stats.tokens.cached / Math.max(report.stats.tokens.prompt, 1) * 100)}%）` : '';
+    L.push(`- 醒来用了 ${report.stats.tokens.total} token（输入 ${report.stats.tokens.prompt} / 输出 ${report.stats.tokens.completion} · ${report.stats.tokens.calls} 次推理${hit}）`);
+  }
   if (report.timeline.length) {
     L.push('');
     L.push('## 他这一夜');

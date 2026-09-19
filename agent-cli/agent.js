@@ -199,9 +199,11 @@ async function executeTool(registry, name, argsJson) {
   return text;
 }
 
-// ━━━ LLM 流式（正文实时打印；tool_calls 增量累积）━━━
+// ━━━ LLM 流式（正文实时打印；tool_calls 增量累积；usage 累计给 night.js 记账）━━━
+const tokenUsage = { prompt: 0, completion: 0, total: 0, cached: 0, calls: 0 };
+function resetTokenUsage() { tokenUsage.prompt = 0; tokenUsage.completion = 0; tokenUsage.total = 0; tokenUsage.cached = 0; tokenUsage.calls = 0; }
 async function chatStream(messages, apiKey, tools) {
-  const body = { model: CFG.model, messages, stream: true };
+  const body = { model: CFG.model, messages, stream: true, stream_options: { include_usage: true } };
   if (CFG.maxTokens != null) body.max_tokens = CFG.maxTokens; // 默认不传——模型自己管
   if (tools && tools.length) body.tools = tools;
   const res = await fetch(CFG.llmUrl, {
@@ -213,10 +215,12 @@ async function chatStream(messages, apiKey, tools) {
     const t = await res.text().catch(() => '');
     throw new Error(`LLM HTTP ${res.status}: ${t.slice(0, 300)}`);
   }
+  tokenUsage.calls++;
   const decoder = new TextDecoder();
   let buf = '';
   let text = '';
   let reasoningLen = 0;
+  let lastUsage = null; // 本请求的 usage 快照——服务端可能在多个 chunk 都带，只认最后一份
   const tcAcc = new Map(); // index -> {id, name, args}
   for await (const chunk of res.body) {
     buf += decoder.decode(chunk, { stream: true });
@@ -228,7 +232,9 @@ async function chatStream(messages, apiKey, tools) {
       const payload = s.slice(5).trim();
       if (payload === '[DONE]') continue;
       try {
-        const d = JSON.parse(payload).choices?.[0]?.delta;
+        const j = JSON.parse(payload);
+        const d = j.choices?.[0]?.delta;
+        if (j.usage) lastUsage = j.usage; // 覆盖——流结束时只按最后快照计一次
         if (!d) continue;
         if (d.reasoning_content) reasoningLen += d.reasoning_content.length;
         if (d.content) { text += d.content; out(d.content); }
@@ -245,8 +251,15 @@ async function chatStream(messages, apiKey, tools) {
       } catch { /* 非 JSON 行忽略 */ }
     }
   }
+  if (lastUsage) { // 流结束：按最后一份快照计一次，杜绝多 chunk 重复累计
+    tokenUsage.prompt += lastUsage.prompt_tokens || 0;
+    tokenUsage.completion += lastUsage.completion_tokens || 0;
+    tokenUsage.total += lastUsage.total_tokens || 0;
+    const cached = lastUsage.prompt_tokens_details?.cached_tokens ?? lastUsage.prompt_cache_hit_tokens ?? 0;
+    tokenUsage.cached += cached || 0; // 前缀缓存命中（命中部分计费打折）
+  }
   const toolCalls = [...tcAcc.keys()].sort((a, b) => a - b).map((i) => tcAcc.get(i));
-  return { text, reasoningLen, toolCalls };
+  return { text, reasoningLen, toolCalls, promptTokens: lastUsage?.prompt_tokens ?? 0 };
 }
 
 // 一轮完整提问：LLM ↔ 工具往返，直到给出正文或轮数用尽（night.js 用 maxRounds 收紧查证轮数）
@@ -387,7 +400,7 @@ async function main() {
 }
 
 // 供 night.js 复用（夜间整理：同一套 profile 注入 + MCP 客户端 + 工具回环）
-module.exports = { CFG, loadSecrets, fetchProfile, McpConn, chatStream, sendTurn };
+module.exports = { CFG, loadSecrets, fetchProfile, McpConn, chatStream, sendTurn, tokenUsage, resetTokenUsage };
 
 if (require.main === module) {
   main().catch((e) => { console.error('[致命]', e.stack || e.message); process.exit(1); });

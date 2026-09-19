@@ -10,7 +10,7 @@
     "maxVerdicts": 30,
     "autoRounds": 60,
     "autoWriteCap": 60,
-    "autoKeepTools": 22,
+    "autoKeepTools": 400,
     "maxBatches": 10,
     "judgeRounds": 4,
     "focus": "auto",
