@@ -1165,13 +1165,13 @@ async function archiveAssociate(params) {
   const max = ranked[0]?.[1] || 1;
   return {
     ok: true,
-    seeds: seedIds.map((id) => ({ id, title: evById.get(id)?.title ?? `#${id}`, ...(seedSim?.get(id) != null ? { sim: Math.round(seedSim.get(id) * 10000) / 10000 } : {}) })),
+    seeds: seedIds.map((id) => ({ id, title: evById.get(id)?.title ?? `#${id}`, summary: evById.get(id)?.summary ?? null, ...(seedSim?.get(id) != null ? { sim: Math.round(seedSim.get(id) * 10000) / 10000 } : {}) })),
     k, matches: ranked.map(([id, score]) => {
       const ev = evById.get(id);
       const via = viaEdgeOf(id, r, adj, edgeInfo);
       const cid = commOf.get(id);
       return {
-        id, title: ev.title, event_type: ev.event_type, time_span_start: ev.time_span_start,
+        id, title: ev.title, summary: ev.summary ?? null, event_type: ev.event_type, time_span_start: ev.time_span_start,
         community: cid == null ? null : (commName.get(cid) ?? `社区${cid}`),
         ppr: Math.round((score / max) * 10000) / 10000,
         via: via ? { id: via.from_id, title: evById.get(via.from_id)?.title ?? `#${via.from_id}`, edge_type: via.edge_type } : null,
