@@ -821,7 +821,7 @@ function dbEventNetworkStats() {
     if (e.edge_type === 'overlap') overlap = e.c;
     else if (e.edge_type === 'thematic') thematic = e.c;
   }
-  const perEvent = DB.prepare(`SELECT e.id, e.title, e.event_type, e.time_span_start,
+  const perEvent = DB.prepare(`SELECT e.id, e.title, e.summary, e.event_type, e.time_span_start,
         COALESCE(SUM(CASE WHEN ee.edge_type = 'thematic' THEN 1 ELSE 0 END), 0) AS thematic_n,
         COALESCE(SUM(CASE WHEN ee.edge_type = 'overlap' THEN 1 ELSE 0 END), 0) AS overlap_n
      FROM events e
@@ -834,7 +834,7 @@ function dbEventNetworkStats() {
     total_edges: overlap + thematic,
     overlap,
     thematic,
-    per_event: perEvent.map((r) => ({ id: r.id, title: r.title, event_type: r.event_type, time_span_start: r.time_span_start, thematic_n: r.thematic_n, overlap_n: r.overlap_n })),
+    per_event: perEvent.map((r) => ({ id: r.id, title: r.title, summary: r.summary ?? null, event_type: r.event_type, time_span_start: r.time_span_start, thematic_n: r.thematic_n, overlap_n: r.overlap_n })),
     bridges: structure.bridges,
     cut_vertices: structure.cut_vertices,
   };
@@ -983,7 +983,7 @@ function buildSubgraph({ seeds, radius, max_nodes, edge_types, include_summaries
         time_span_start: ev.time_span_start, time_span_end: ev.time_span_end,
         community_id: commOf.get(id) ?? null, community: commLabel(id),
         strength: Math.round((str.get(id) ?? 0) * 10000) / 10000, hops: hops.get(id) ?? 0, seed: seeds.includes(id),
-        ...(include_summaries ? { summary: summaryClip(ev.summary, 100) } : {}),
+        summary: ev.summary ?? null,
       };
     })
     .sort((x, y) => (y.seed ? 1 : 0) - (x.seed ? 1 : 0) || y.strength - x.strength || x.id - y.id);
@@ -1200,8 +1200,8 @@ function archiveEventPath(params) {
     .slice(0, k);
   return {
     ok: true,
-    from: { id: from, title: evById.get(from)?.title ?? `#${from}` },
-    to: { id: to, title: evById.get(to)?.title ?? `#${to}` },
+    from: { id: from, title: evById.get(from)?.title ?? `#${from}`, summary: evById.get(from)?.summary ?? null },
+    to: { id: to, title: evById.get(to)?.title ?? `#${to}`, summary: evById.get(to)?.summary ?? null },
     direct_edge: direct,
     paths_found: all.length,
     paths: paths.map((p) => ({
@@ -1209,7 +1209,7 @@ function archiveEventPath(params) {
       hops: p.nodes.length - 1,
       chain: p.nodes.map((id, i) => {
         const e = i === 0 ? null : mainEdgeOf(edgeInfo, p.nodes[i - 1], id);
-        return { id, title: evById.get(id)?.title ?? `#${id}`, via: e ? e.type : null };
+        return { id, title: evById.get(id)?.title ?? `#${id}`, summary: evById.get(id)?.summary ?? null, via: e ? e.type : null };
       }),
     })),
     note: all.length === 0
@@ -1317,7 +1317,7 @@ function remoteCausalCandidates(params) {
     time_span: (e.time_span_start ?? '?') + (e.time_span_end && e.time_span_end !== e.time_span_start ? ' → ' + e.time_span_end : ''),
     community: (() => { const c = commOf.get(e.id); return c == null ? null : (commName.get(c) ?? `社区${c}`); })(),
     importance: e.importance ?? 0.5, degree: deg.get(e.id) || 0,
-    summary: (e.summary || '').slice(0, 200) || null,
+    summary: e.summary ?? null,
   });
   return {
     ok: true, mode: 'remote',
@@ -1351,7 +1351,7 @@ function getEventGraph(eventId) {
       } catch {}
     }
     neighbors.push({
-      id: nb.id, title: nb.title, event_type: nb.event_type, relation: e.edge_type, confidence: e.confidence,
+      id: nb.id, title: nb.title, summary: nb.summary ?? null, event_type: nb.event_type, relation: e.edge_type, confidence: e.confidence,
       time_gap: timeGapDays(center.time_span_start, center.time_span_end, nb.time_span_start, nb.time_span_end),
       ...(semanticScore !== undefined ? { semantic_score: semanticScore } : {}),
       ...(edgeName !== undefined ? { edge_name: edgeName } : {}),
@@ -1362,7 +1362,7 @@ function getEventGraph(eventId) {
   const grouped = {};
   for (const n of neighbors) (grouped[n.relation] ||= []).push(n);
   return {
-    center: { id: center.id, title: center.title, event_type: center.event_type, time_span_start: center.time_span_start, time_span_end: center.time_span_end, themes: center.themes },
+    center: { id: center.id, title: center.title, summary: center.summary ?? null, event_type: center.event_type, time_span_start: center.time_span_start, time_span_end: center.time_span_end, themes: center.themes },
     graph: grouped,
     stats: { total_edges: edges.length, neighbor_count: neighbors.length, manual_edges: manual, auto_edges: edges.length - manual },
   };
@@ -1675,7 +1675,7 @@ const MCP_TOOLS = [
   { name: 'archive_night_status', description: '查助手的**夜间唤醒**状态（agent-night，每日 04:00 的记忆整理）：开关（enabled）+ 最近一次晨报摘要（判定了多少条因果、建/否了多少边、故事群改名）。night.js 启动前也查它——关着就不会唤醒。', inputSchema: { type: 'object', properties: {} } },
   { name: 'archive_night_toggle', description: '打开 / 关闭助手的**夜间唤醒**（agent-night）。enabled=true 开（今晚 04:00 助手会醒来整理记忆：因果反思 + 故事群改名，晨报推给用户）/ false 关（他整晚安睡，不会被唤醒）。REST POST /archive/night 切的也是这里。', inputSchema: { type: 'object', properties: { enabled: { type: 'boolean', description: 'true=允许夜间唤醒整理 / false=不唤醒' } }, required: ['enabled'] } },
   { name: 'archive_night_reports', description: '读最近几份**晨报**（夜间唤醒整理的结果存档，默认 3 份）：每晚报了判多少因果（link 建 / reject 否 / defer 缓 / done 结）、故事群改名数、队列剩余、耗时、助手的梦话（dream_words）和整理备注。\n\n什么时候用：想回顾"助手夜里都整理了什么"、对比几晚的反思进度、或早上醒来先看自己夜里做了什么。\n\n某一晚的逐条判定明细（verdict 理由原文）走 REST /archive/night-reports/:date；开关用 archive_night_toggle。', inputSchema: { type: 'object', properties: { limit: { type: 'number', description: '返回份数, 默认 3, 范围 1-20' } } } },
-  { name: 'archive_list_events', description: '列出事件（时间事件流）——"人能一眼看懂的人生目录"（瞬间/时期/里程碑/仪式，跨窗口聚合）。\n\n什么时候用：\n  · 想快速看"我们这段时间经历了什么"\n  · 用户的状态让你想查某段时期的脉络\n  · 想找某类事件（event_type 筛选）\n\n默认按时间倒序返回最近 10 条（不带 summary 省 token；需要全文传 include_summary=true）。拿 id 后用 archive_read_event 看全文、archive_event_graph 看关联。', inputSchema: { type: 'object', properties: { theme: { type: 'string', description: '按主题标签筛选（如 "音乐"、"家"）' }, event_type: { type: 'string', enum: ['moment', 'period', 'milestone', 'ritual'], description: '按事件类型筛选' }, time_start: { type: 'string', description: '只看时间跨到此日期之后的事件（如 "2026-05"）' }, time_end: { type: 'string', description: '只看时间跨到此日期之前的事件' }, sort: { type: 'string', enum: ['importance', 'created', 'time', 'time_asc'], description: '排序: time=按发生时间倒序(默认)/time_asc=正序(从最早)/importance=按权重/created=按创建时间' }, limit: { type: 'number', description: '返回条数, 默认10, 最大200' }, offset: { type: 'number', description: '分页偏移' }, include_summary: { type: 'boolean', description: '是否包含 summary 全文(默认 false——列表只看标题/时间, 省 token)' } } } },
+  { name: 'archive_list_events', description: '列出事件（时间事件流）——"人能一眼看懂的人生目录"（瞬间/时期/里程碑/仪式，跨窗口聚合）。\n\n什么时候用：\n  · 想快速看"我们这段时间经历了什么"\n  · 用户的状态让你想查某段时期的脉络\n  · 想找某类事件（event_type 筛选）\n\n默认按时间倒序返回最近 10 条，每条带 summary 全文。拿 id 后用 archive_read_event 看源对话、archive_event_graph 看关联。', inputSchema: { type: 'object', properties: { theme: { type: 'string', description: '按主题标签筛选（如 "音乐"、"家"）' }, event_type: { type: 'string', enum: ['moment', 'period', 'milestone', 'ritual'], description: '按事件类型筛选' }, time_start: { type: 'string', description: '只看时间跨到此日期之后的事件（如 "2026-05"）' }, time_end: { type: 'string', description: '只看时间跨到此日期之前的事件' }, sort: { type: 'string', enum: ['importance', 'created', 'time', 'time_asc'], description: '排序: time=按发生时间倒序(默认)/time_asc=正序(从最早)/importance=按权重/created=按创建时间' }, limit: { type: 'number', description: '返回条数, 默认10, 最大200' }, offset: { type: 'number', description: '分页偏移' }, include_summary: { type: 'boolean', description: '已废弃: 列表现在始终带 summary 全文, 参数仅为兼容保留' } } } },
   { name: 'archive_search_events', description: '事件混合检索——语义 + 关键词双路并行，返回完整事件（不是碎片）。\n\n两路召回：\n  · 语义路——query 向量化后与事件的摘要切块（frag）比相似度，命中某块切块即命中它所属的事件，返回该事件全文\n  · 关键词路——BM25 对事件标题+正文做词频匹配（不含主题标签/时间等元数据；中文按二元组切词，英文按整词）\n\n两路各自排序后用 RRF 融合——两路都命中的事件排最前。\n\n什么时候用：\n  · 想按"意思"找事件，记不清确切措辞（语义路擅长）\n  · 记得确切的词/名字/编号，要精确命中（关键词路擅长）\n  · archive_list_events 按时间/类型翻太慢，想一步到位\n\n拿到 event_id 后用 archive_read_event 看溯源对话、archive_event_graph 看关联。', inputSchema: { type: 'object', properties: { query: { type: 'string', description: '检索词——一段意思、一个关键词、或几个词都行' }, k: { type: 'number', description: '返回几个事件, 默认5, 范围1-20' } }, required: ['query'] } },
   { name: 'archive_read_event', description: '读取单个事件完整内容：summary 全文 + 溯源对话摘录。\n\n什么时候用：从 list_events/communities 拿到事件 id 后，想读"这件事到底是什么"时。\n看关联用 archive_event_graph。', inputSchema: { type: 'object', properties: { event_id: { type: 'number', description: '事件 id' } }, required: ['event_id'] } },
   { name: 'archive_create_event', description: '创建一个记忆事件（进入语言坐标 + 时空坐标，参与网络构建）。\n\n什么时候用：某段经历值得被记成"发生过什么"时——你是叙述者。\n⚠️ summary 写法影响网络质量：1-3 自然段，每段一个主题；time_span 填真实时间范围。\n创建后旧边不自动更新——需要时调 archive_rebuild_network。', inputSchema: { type: 'object', properties: { title: { type: 'string', description: '事件标题, 如"第一次聊到唱片机"' }, summary: { type: 'string', description: '凝练叙事, 建议 1-3 个自然段, 每段一个主题(影响段落匹配质量)' }, time_span_start: { type: 'string', description: '时间起点, 格式 YYYY-MM-DD 或 YYYY-MM' }, time_span_end: { type: 'string', description: '时间终点, 瞬间事件留空' }, themes: { type: 'array', items: { type: 'string' }, description: '主题标签(纯展示, 不参与计算)' }, source_block_ids: { type: 'array', items: { type: 'number' }, description: '溯源 block ids(可从 recall/read 拿)' }, importance: { type: 'number', description: '权重 0-1, 默认0.5(纯展示)' }, event_type: { type: 'string', enum: ['moment', 'period', 'milestone', 'ritual'], description: '事件类型, 默认moment' } }, required: ['title', 'time_span_start'] } },
@@ -1690,12 +1690,12 @@ const MCP_TOOLS = [
   { name: 'archive_event_graph', description: '展开一个事件周围的关联网络，按关系类型分组返回：\n  · thematic —— 语义血缘（隔了很久还相似 = 本质关联）\n  · overlap —— 同时段（时空坐标）\n  · causal —— 因果关联（人/AI 反思后的连接，带边名+理由）\n\n什么时候用：想知道"这件事和什么有关"；或发现两个事件应该有边却没有（→ archive_event_link）。\n边缺失/陈旧时用 archive_rebuild_network（慎用）。', inputSchema: { type: 'object', properties: { event_id: { type: 'number', description: '中心事件 id（从 archive_list_events 拿）' } }, required: ['event_id'] } },
   { name: 'archive_rebuild_network', description: '⚠️ 慎用——全量重建事件网络（增量 embed 脏事件 + 全量重算所有边 + 自动重新聚类故事群），可能耗时数十秒（本地首次全量 embed 需数十分钟）并改写整个网络。\n\n什么时候才用：\n  · 刚创建/修改过事件，确认它的边还没生成\n  · 网络明显陈旧（边缺失/错误）\n\n手动边会保留；命名过的社区按成员重叠 ≥80% 保留名字。平时别碰。', inputSchema: { type: 'object', properties: {} } },
   { name: 'archive_restore_network', description: '⚠️ 仅在 archive_rebuild_network 失败中途（网络半重建状态）时使用——把边回滚到上次 rebuild 之前。\n\n什么时候不要用：rebuild 成功之后（备份已删）；正常状态调它没有意义。', inputSchema: { type: 'object', properties: {} } },
-  { name: 'archive_event_subgraph', description: '一次调用抽出一个事件周边的剪枝子图——不用再一跳一跳调 archive_event_graph 拼图。\n\n从 seed 出发按边权（因果3.0/语义1.5/同时段1.0）在 radius 跳内做最优扩展，最多 max_nodes 个节点；节点带故事群归属，边带类型/方向/理由/语义分数与 frag 证据（血缘原文片段）。\n\n什么时候用：\n  · 想看"这件事周围整片的结构"，而不只是一圈邻居\n  · 反思会话开头铺上下文——一个子图顶几十次逐跳调用\n  · seeds 传多个：把几个检索命中连成一片看\n\n想读节点全文用 archive_read_event；想沿因果走叙事链用 archive_causal_chain。', inputSchema: { type: 'object', properties: { seed: { type: 'number', description: '中心事件 id（seeds 传了可省）' }, seeds: { type: 'array', items: { type: 'number' }, description: '多个中心事件 id——把几片连起来看, 最多 10 个' }, radius: { type: 'number', description: '扩展几跳, 默认 2, 范围 1-3' }, max_nodes: { type: 'number', description: '最多带多少节点, 默认 24, 范围 5-40(超出的弱分支被剪掉)' }, edge_types: { type: 'array', items: { type: 'string', enum: ['causal', 'thematic', 'overlap'] }, description: '只看哪些边, 默认全要' }, include_summaries: { type: 'boolean', description: 'true=节点带 100 字摘要(默认不带, 省 token)' } } } },
+  { name: 'archive_event_subgraph', description: '一次调用抽出一个事件周边的剪枝子图——不用再一跳一跳调 archive_event_graph 拼图。\n\n从 seed 出发按边权（因果3.0/语义1.5/同时段1.0）在 radius 跳内做最优扩展，最多 max_nodes 个节点；节点带故事群归属，边带类型/方向/理由/语义分数与 frag 证据（血缘原文片段）。\n\n什么时候用：\n  · 想看"这件事周围整片的结构"，而不只是一圈邻居\n  · 反思会话开头铺上下文——一个子图顶几十次逐跳调用\n  · seeds 传多个：把几个检索命中连成一片看\n\n想读节点全文用 archive_read_event；想沿因果走叙事链用 archive_causal_chain。', inputSchema: { type: 'object', properties: { seed: { type: 'number', description: '中心事件 id（seeds 传了可省）' }, seeds: { type: 'array', items: { type: 'number' }, description: '多个中心事件 id——把几片连起来看, 最多 10 个' }, radius: { type: 'number', description: '扩展几跳, 默认 2, 范围 1-3' }, max_nodes: { type: 'number', description: '最多带多少节点, 默认 24, 范围 5-40(超出的弱分支被剪掉)' }, edge_types: { type: 'array', items: { type: 'string', enum: ['causal', 'thematic', 'overlap'] }, description: '只看哪些边, 默认全要' }, include_summaries: { type: 'boolean', description: '已废弃: 节点现在始终带全文 summary, 参数仅为兼容保留' } } } },
   { name: 'archive_network_stats', description: '事件网络的全局结构一览：边数与类型分布 / 连接最多的枢纽事件 top10 / 跨故事群的桥边（群与群是靠哪些事件连起来的——叙事上最值钱的连接） / 割点（拿掉就会让网络断开的枢纽事件）。\n\n什么时候用：\n  · 会话开头想从高处看一眼"网长什么样了"\n  · 想找两个故事群之间的过渡事件\n  · 想找"抽掉就散"的关键事件\n\n逐事件全量明细走 REST /archive/events/network-stats；局部结构用 archive_event_subgraph。', inputSchema: { type: 'object', properties: {} } },
   { name: 'archive_associate', description: '联想检索——给一段当下的话（或几个种子事件），在事件网做 Personalized PageRank 扩散：不只找"最像的卡"，而是"从最像的卡出发，整片网里哪里被牵动"。causal 边（权重 3.0）主导扩散方向，每条结果带 via——是被谁、用什么关系拉上来的。\n\n什么时候用：\n  · 用户说起过去的事，想看"这和网上哪些事件连在一起"——找关联而非相似，比 search_events 更适合\n  · 反思会话开头铺整片上下文\n  · 有明确种子时直接传 seeds 跳过语义步\n\n只想找相似事件用 archive_search_events。', inputSchema: { type: 'object', properties: { context: { type: 'string', description: '当下的话——向量化后命中的事件作种子（与 seeds 二选一）' }, seeds: { type: 'array', items: { type: 'number' }, description: '直接指定种子事件 id（最多 4 个），跳过语义步' }, k: { type: 'number', description: '返回数, 默认 8, 范围 1-20' }, edge_types: { type: 'array', items: { type: 'string', enum: ['causal', 'thematic', 'overlap'] }, description: '参与扩散的边型, 默认全部' } } } },
   { name: 'archive_event_path', description: 'A→B 路径查询——"这两个事件是怎么连上的"。有界枚举简单路径（默认 ≤5 跳），按可靠性评分降序：Σ边权（causal 顺方向 ×1.2 / 逆 ×0.8，thematic 1.5，overlap 1.0）减每段 0.3 长度惩罚——短而强的链赢过长而弱的链。\n\n什么时候用：\n  · 两个事件相关但没有直连边，想看它们经由什么连起来（桥、枢纽会现形）\n  · 反思时想要"评分排序的候选路径集"而非单条贪心链\n\n1 跳邻居用 archive_event_graph；沿因果走叙事主线用 archive_causal_chain。', inputSchema: { type: 'object', properties: { from: { type: 'number', description: '起点事件 id' }, to: { type: 'number', description: '终点事件 id' }, k: { type: 'number', description: '返回几条路径, 默认 3, 范围 1-10' }, max_hops: { type: 'number', description: '最大跳数, 默认 5, 范围 2-6' }, edge_types: { type: 'array', items: { type: 'string', enum: ['causal', 'thematic', 'overlap'] }, description: '参与的边型, 默认全部' } }, required: ['from', 'to'] } },
-  { name: 'archive_causal_probe', description: '给一个事件出一份"因果候选单"——机器遍历图找可能的原因/结果，并附上证据路径，由反思者（哥哥/助手/AI）判定。\n\n模式（mode）：\n  · cause —— 找"可能导致它"的候选（时间在前）\n  · effect —— 找"它可能导致"的候选（时间在后）\n  · both —— 两边都要\n  · remote —— 远端因果候选对：**跨故事群、无任何边、时间不重叠但间隔在因果走廊内（默认 7-90 天）**——hop1-3 的结构性盲区。不围绕单个事件，出的是"时序走廊里的远端对"（结构位/重要度/远而不隔排序），判读同样走 archive_causal_review，不需要 event_id\n\n候选分四层：\n  · hop1 promotion —— 已有 thematic/overlap 边 + 时间符合 → 考虑提升为因果\n  · hop2 two_hop —— X与W相近、W是Y的已知因果 → X可能是深层上游/下游\n  · hop3 community —— 同故事群但毫无边的弱线索\n  · hop4 remote —— 跨群·无边·时序走廊（mode=remote 专用）\n\n返回每个候选的评分、路径和一句为什么。判定用 archive_causal_review（link/reject/done/defer）。', inputSchema: { type: 'object', properties: { event_id: { type: 'number', description: '要出题的事件 id（remote 模式不需要）' }, mode: { type: 'string', enum: ['cause', 'effect', 'both', 'remote'], description: 'remote=远端跨群因果候选(无需 event_id); 其余默认 both' }, limit: { type: 'number', description: '每侧候选数上限, 默认 5, 最大 10' }, detail: { type: 'boolean', description: 'true=候选摘要放宽到 400 字(默认 120, 省 token)' }, gap_min: { type: 'number', description: 'remote: 走廊下限(天), 默认 7' }, gap_max: { type: 'number', description: 'remote: 走廊上限(天), 默认 90' } }, required: ['event_id'] } },
-  { name: 'archive_causal_review', description: '因果反思循环的核心——把「没被解释的事件」和「它们的候选」一起端上来，反思者逐个判定：\n  · link —— 确认因果：创建 causal 边（方向=时间先后，可用 direction 覆盖），记一条判定\n  · reject —— 不是因果，记下，以后不再出这道题\n  · done —— 这件事已经解释清楚了，别再给它出题\n  · defer —— 现在说不准，N 天后再来（默认14天）\n\npresent 模式：按 importance 高→低、孤立度低→高排序，挑最值得反思的事件。候选分两侧（candidate_causes=疑似原因 / candidate_effects=疑似结果），各 1 个（单侧空时另一侧补足到 2）——link 时方向默认按时间推断（早→晚），与两侧一致，想覆盖再传 direction。\n判过的(reject/link/done/defer未到期)不会再出现。每条判定都留痕，decided_by 默认 "ai"——哥哥可以写 "gege"。\n\n批量判定传 verdicts（一次事务判完）；present 可用 focus 换队列（effects=无果死胡同）、detail 放宽候选摘要；link 的返回带 echo——新边两侧一跳的因果邻域，看判定让链长成了什么样。\n\n候选不限于 probe 的近端题——probe mode=\'remote\' 端上来的**跨故事群远端对**（晚事件=event_id，早事件=candidate_id，方向默认早→晚）用完全相同的方式判定；判过的远端对同样永久沉底。', inputSchema: { type: 'object', properties: { present: { type: 'boolean', description: 'true=只端菜(看下一批要判什么), 不写任何判定。默认 true。' }, event_id: { type: 'number', description: 'verdict 模式下必填: 判哪个事件' }, candidate_id: { type: 'number', description: 'verdict 模式下必填: 判哪个候选(link/reject 用)' }, verdict: { type: 'string', enum: ['link', 'reject', 'done', 'defer'], description: 'link=确认因果建边 / reject=否决 / done=该事件无需再解释 / defer=缓几天再说' }, direction: { type: 'string', enum: ['a→b', 'b→a'], description: 'link 时可选: 覆盖时间推断的方向。"a→b"=candidate 是 event 的原因' }, reason: { type: 'string', description: 'link/reject 建议写: 因果理由 / 否决理由' }, defer_days: { type: 'number', description: 'defer 时: 多少天后重新出题, 默认 14' }, decided_by: { type: 'string', description: '判定者签名, 默认 "ai"。哥哥用 "gege"。' }, focus: { type: 'string', enum: ['causes', 'effects', 'auto'], description: 'present 模式选队列: causes=无因事件(默认) / effects=无果事件(叙事死胡同) / auto=两者并集' }, detail: { type: 'boolean', description: 'present 模式: true=候选摘要放宽到 400 字(默认 120)' }, verdicts: { type: 'array', description: '批量判定: [{event_id, candidate_id?, verdict, direction?, reason?, defer_days?}] 一次事务判完(≤50), 与单条 verdict 参数互斥', items: { type: 'object', properties: { event_id: { type: 'number' }, candidate_id: { type: 'number' }, verdict: { type: 'string', enum: ['link', 'reject', 'done', 'defer'] }, direction: { type: 'string', enum: ['a→b', 'b→a'] }, reason: { type: 'string' }, defer_days: { type: 'number' } }, required: ['event_id', 'verdict'] } } }, required: [] } },
+  { name: 'archive_causal_probe', description: '给一个事件出一份"因果候选单"——机器遍历图找可能的原因/结果，并附上证据路径，由反思者（哥哥/助手/AI）判定。\n\n模式（mode）：\n  · cause —— 找"可能导致它"的候选（时间在前）\n  · effect —— 找"它可能导致"的候选（时间在后）\n  · both —— 两边都要\n  · remote —— 远端因果候选对：**跨故事群、无任何边、时间不重叠但间隔在因果走廊内（默认 7-90 天）**——hop1-3 的结构性盲区。不围绕单个事件，出的是"时序走廊里的远端对"（结构位/重要度/远而不隔排序），判读同样走 archive_causal_review，不需要 event_id\n\n候选分四层：\n  · hop1 promotion —— 已有 thematic/overlap 边 + 时间符合 → 考虑提升为因果\n  · hop2 two_hop —— X与W相近、W是Y的已知因果 → X可能是深层上游/下游\n  · hop3 community —— 同故事群但毫无边的弱线索\n  · hop4 remote —— 跨群·无边·时序走廊（mode=remote 专用）\n\n返回每个候选的评分、路径和一句为什么。判定用 archive_causal_review（link/reject/done/defer）。', inputSchema: { type: 'object', properties: { event_id: { type: 'number', description: '要出题的事件 id（remote 模式不需要）' }, mode: { type: 'string', enum: ['cause', 'effect', 'both', 'remote'], description: 'remote=远端跨群因果候选(无需 event_id); 其余默认 both' }, limit: { type: 'number', description: '每侧候选数上限, 默认 5, 最大 10' }, detail: { type: 'boolean', description: '已废弃: 候选摘要现在始终是全文, 参数仅为兼容保留' }, gap_min: { type: 'number', description: 'remote: 走廊下限(天), 默认 7' }, gap_max: { type: 'number', description: 'remote: 走廊上限(天), 默认 90' } }, required: ['event_id'] } },
+  { name: 'archive_causal_review', description: '因果反思循环的核心——把「没被解释的事件」和「它们的候选」一起端上来，反思者逐个判定：\n  · link —— 确认因果：创建 causal 边（方向=时间先后，可用 direction 覆盖），记一条判定\n  · reject —— 不是因果，记下，以后不再出这道题\n  · done —— 这件事已经解释清楚了，别再给它出题\n  · defer —— 现在说不准，N 天后再来（默认14天）\n\npresent 模式：按 importance 高→低、孤立度低→高排序，挑最值得反思的事件。候选分两侧（candidate_causes=疑似原因 / candidate_effects=疑似结果），各 1 个（单侧空时另一侧补足到 2）——link 时方向默认按时间推断（早→晚），与两侧一致，想覆盖再传 direction。\n判过的(reject/link/done/defer未到期)不会再出现。每条判定都留痕，decided_by 默认 "ai"——哥哥可以写 "gege"。\n\n批量判定传 verdicts（一次事务判完）；present 可用 focus 换队列（effects=无果死胡同）；link 的返回带 echo——新边两侧一跳的因果邻域，看判定让链长成了什么样。\n\n候选不限于 probe 的近端题——probe mode=\'remote\' 端上来的**跨故事群远端对**（晚事件=event_id，早事件=candidate_id，方向默认早→晚）用完全相同的方式判定；判过的远端对同样永久沉底。', inputSchema: { type: 'object', properties: { present: { type: 'boolean', description: 'true=只端菜(看下一批要判什么), 不写任何判定。默认 true。' }, event_id: { type: 'number', description: 'verdict 模式下必填: 判哪个事件' }, candidate_id: { type: 'number', description: 'verdict 模式下必填: 判哪个候选(link/reject 用)' }, verdict: { type: 'string', enum: ['link', 'reject', 'done', 'defer'], description: 'link=确认因果建边 / reject=否决 / done=该事件无需再解释 / defer=缓几天再说' }, direction: { type: 'string', enum: ['a→b', 'b→a'], description: 'link 时可选: 覆盖时间推断的方向。"a→b"=candidate 是 event 的原因' }, reason: { type: 'string', description: 'link/reject 建议写: 因果理由 / 否决理由' }, defer_days: { type: 'number', description: 'defer 时: 多少天后重新出题, 默认 14' }, decided_by: { type: 'string', description: '判定者签名, 默认 "ai"。哥哥用 "gege"。' }, focus: { type: 'string', enum: ['causes', 'effects', 'auto'], description: 'present 模式选队列: causes=无因事件(默认) / effects=无果事件(叙事死胡同) / auto=两者并集' }, detail: { type: 'boolean', description: '已废弃: 候选摘要现在始终是全文, 参数仅为兼容保留' }, verdicts: { type: 'array', description: '批量判定: [{event_id, candidate_id?, verdict, direction?, reason?, defer_days?}] 一次事务判完(≤50), 与单条 verdict 参数互斥', items: { type: 'object', properties: { event_id: { type: 'number' }, candidate_id: { type: 'number' }, verdict: { type: 'string', enum: ['link', 'reject', 'done', 'defer'] }, direction: { type: 'string', enum: ['a→b', 'b→a'] }, reason: { type: 'string' }, defer_days: { type: 'number' } }, required: ['event_id', 'verdict'] } } }, required: [] } },
   { name: 'archive_causal_chain', description: '沿有向因果边走一条叙事链——"因为什么才走到今天"。\n\n输入一个事件，向上游回溯原因（upstream）、向下游推演后果（downstream）。每层只展开权重最高的那条边（真正的主线），被压掉的分支记录为 branches——想深挖分支就再对那个事件走一次。\n\n返回：链上每步的边名/理由、dead ends（走到没有因果边的地方）。这是给反思者读的叙事，不是机器判因果。', inputSchema: { type: 'object', properties: { event_id: { type: 'number', description: '链的起点事件 id' }, depth: { type: 'number', description: '最多走几层, 默认 4, 最大 8' }, direction: { type: 'string', enum: ['upstream', 'downstream', 'both'], description: '默认 both' } }, required: ['event_id'] } },
 ];
 
@@ -1786,12 +1786,7 @@ async function callTool(name, a) {
   // ── events ──
   if (name === 'archive_list_events') {
     const { items, total } = dbListEvents({ theme: a.theme, event_type: a.event_type, time_start: a.time_start, time_end: a.time_end, sort: a.sort, limit: a.limit, offset: a.offset });
-    const slim = items.map((it) => {
-      if (a.include_summary) return it;
-      const { summary, ...rest } = it;
-      return rest;
-    });
-    return { ok: true, total, items: slim };
+    return { ok: true, total, items };
   }
   if (name === 'archive_search_events') {
     const query = String(a.query ?? '').trim();
@@ -1868,7 +1863,7 @@ async function callTool(name, a) {
     const evs = DB.prepare('SELECT COUNT(*) AS c FROM events').get();
     const comms = DB.prepare('SELECT COUNT(*) AS c FROM event_communities').get();
     const edges = DB.prepare('SELECT COUNT(*) AS c FROM event_edges').get();
-    const recentEvents = DB.prepare('SELECT id, title, event_type, time_span_start FROM events ORDER BY updated_at DESC LIMIT 5').all();
+    const recentEvents = DB.prepare('SELECT id, title, summary, event_type, time_span_start FROM events ORDER BY updated_at DESC LIMIT 5').all();
     return {
       ok: true,
       counts: { events: evs?.c ?? 0, communities: comms?.c ?? 0, edges: edges?.c ?? 0 },
@@ -1890,7 +1885,7 @@ async function callTool(name, a) {
         return {
           id: r.id, name: r.name, renamed: r.renamed === 1, note: r.note,
           member_titles: members.map((m) => titleMap.get(m) ?? `#${m}`),
-          core_event: { id: coreId, title: titleMap.get(coreId) ?? `#${coreId}` },
+          core_event: { id: coreId, title: titleMap.get(coreId) ?? `#${coreId}`, summary: dbGetEvent(coreId)?.summary ?? null },
           internal_edges: r.internal_edges, time_span_start: r.time_span_start, time_span_end: r.time_span_end,
         };
       }),
@@ -1977,7 +1972,6 @@ async function callTool(name, a) {
     if (!Number.isFinite(eventId) || eventId <= 0) return { ok: false, error: 'event_id required' };
     const mode = a.mode === 'cause' || a.mode === 'effect' ? a.mode : 'both';
     const limit = Math.max(1, Math.min(Number(a.limit) || PROBE_DEFAULT_LIMIT, PROBE_MAX_LIMIT));
-    const detail = a.detail === true;
     const g = loadProbeGraph();
     const y = g.evs.get(eventId);
     if (!y) return { ok: false, error: `event ${eventId} not found` };
@@ -2007,14 +2001,14 @@ async function callTool(name, a) {
       (isCause ? linkedCauses : linkedEffects).push(rec);
     }
     const candTo = (c) => ({
-      event_id: c.event.id, title: c.event.title, event_type: c.event.event_type, summary: summaryClip(c.event.summary, detail ? 400 : 120),
+      event_id: c.event.id, title: c.event.title, event_type: c.event.event_type, summary: c.event.summary ?? null,
       time_span_start: c.event.time_span_start, community_id: c.event.community_id,
       score: Math.round(c.score * 100) / 100, hop: c.hop, kind: c.kind, paths: c.paths,
       ...(c.evidence ? { evidence: c.evidence } : {}),
     });
     const out = {
       ok: true,
-      center: { event_id: y.id, title: y.title, event_type: y.event_type, time_span_start: y.time_span_start, time_span_end: y.time_span_end, community_id: y.community_id, degree: y.degree },
+      center: { event_id: y.id, title: y.title, summary: y.summary ?? null, event_type: y.event_type, time_span_start: y.time_span_start, time_span_end: y.time_span_end, community_id: y.community_id, degree: y.degree },
       linked_causes: linkedCauses,
       linked_effects: linkedEffects,
     };
@@ -2028,7 +2022,6 @@ async function callTool(name, a) {
     if (present && (a.verdict || a.verdicts)) return { ok: false, error: 'present 模式只端菜不判定——要判定请去掉 present 再调一次' };
     if (present) {
       const focus = ['causes', 'effects', 'auto'].includes(String(a.focus ?? '')) ? String(a.focus) : 'causes';
-      const detail = a.detail === true;
       const g = loadProbeGraph();
       const reviews = dbListReviews();
       const doneIds = new Set();
@@ -2080,9 +2073,9 @@ async function callTool(name, a) {
         let effectList = effects.slice(0, 1);
         if (causeList.length === 0) effectList = effects.slice(0, 2);
         if (effectList.length === 0) causeList = causes.slice(0, 2);
-        const toItem = (c) => ({ event_id: c.event.id, title: c.event.title, summary: summaryClip(c.event.summary, detail ? 400 : 120), score: Math.round(c.score * 100) / 100, kind: c.kind, paths: c.paths, ...(c.evidence ? { evidence: c.evidence } : {}) });
+        const toItem = (c) => ({ event_id: c.event.id, title: c.event.title, summary: c.event.summary ?? null, score: Math.round(c.score * 100) / 100, kind: c.kind, paths: c.paths, ...(c.evidence ? { evidence: c.evidence } : {}) });
         presented.push({
-          event_id: ev.id, title: ev.title, event_type: ev.event_type, time_span_start: ev.time_span_start,
+          event_id: ev.id, title: ev.title, summary: ev.summary ?? null, event_type: ev.event_type, time_span_start: ev.time_span_start,
           importance: ev.importance, degree: ev.degree, community_id: ev.community_id,
           candidate_causes: causeList.map(toItem),
           candidate_effects: effectList.map(toItem),
@@ -2092,7 +2085,7 @@ async function callTool(name, a) {
         ok: true, focus,
         queue_sizes: { causes: missingIn.length, effects: missingOut.length },
         unexplained_count: unexplained.length, presented_count: presented.length, items: presented,
-        note: 'judge: link {event_id, candidate_id, reason} / reject {event_id, candidate_id} / done {event_id} / defer {event_id, defer_days}, 或 verdicts:[...] 批量判。focus: causes=无因(默认) / effects=无果死胡同 / auto=并集。detail=true 摘要放宽到 400 字。',
+        note: 'judge: link {event_id, candidate_id, reason} / reject {event_id, candidate_id} / done {event_id} / defer {event_id, defer_days}, 或 verdicts:[...] 批量判。focus: causes=无因(默认) / effects=无果死胡同 / auto=并集。',
       };
     }
     // ── 判定: 批量 verdicts(一次事务) 或单条(兼容旧参数) ──
@@ -2157,17 +2150,17 @@ async function callTool(name, a) {
         });
         const main = nexts[0];
         steps.push({
-          event_id: main.ev.id, title: main.ev.title,
+          event_id: main.ev.id, title: main.ev.title, summary: main.ev.summary ?? null,
           via: `${main.edge.edge_type}(${main.edge.dir === 'mutual' ? '双向' : main.edge.dir})`,
           reason: main.reason ?? main.name ?? null,
-          branches: nexts.slice(1).map((b) => ({ event_id: b.ev.id, title: b.ev.title, reason: b.reason ?? b.name ?? null })),
+          branches: nexts.slice(1).map((b) => ({ event_id: b.ev.id, title: b.ev.title, summary: b.ev.summary ?? null, reason: b.reason ?? b.name ?? null })),
         });
         visited.add(main.ev.id);
         cur = main.ev;
       }
       return { steps, dead_end: deadEnd, ended_at: { event_id: cur.id, title: cur.title } };
     };
-    const out = { ok: true, start: { event_id: start.id, title: start.title } };
+    const out = { ok: true, start: { event_id: start.id, title: start.title, summary: start.summary ?? null } };
     if (dir === 'upstream' || dir === 'both') out.upstream = walk('upstream');
     if (dir === 'downstream' || dir === 'both') out.downstream = walk('downstream');
     out.note = '每层只展开权重最高的那条因果边, 分支在 branches 里(想深挖就对那个事件再走一次)。';
