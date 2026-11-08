@@ -4,5 +4,7 @@
   "adminToken": "CHANGE_ME_ADMIN_TOKEN",
   "dataDir": "data",
   "embedPort": 3013,
-  "thematicThreshold": 0.748
+  "thematicThreshold": 0.748,
+  "seedMmrLambda": 0.7,
+  "seedSimFloor": 0.05
 }

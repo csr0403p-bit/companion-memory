@@ -49,6 +49,8 @@ for (const k of ['appToken', 'adminToken']) {
 const PORT = Number(process.env.PORT || CFG.port || 3012);
 const DATA_DIR = path.resolve(__dirname, CFG.dataDir || 'data');
 const THEMATIC_THRESHOLD = Number(CFG.thematicThreshold ?? 0.748);  // qwen 余弦尺度（用户定: ~2.4 条语义边/事件 ≈ 535 条）
+const SEED_MMR_LAMBDA = Number(CFG.seedMmrLambda ?? 0.7);   // associate 种子 MMR: λ·sim − (1−λ)·与已选种子的最大相似
+const SEED_SIM_FLOOR = Number(CFG.seedSimFloor ?? 0.05);    // context 模式 top1 sim 低于此值 → 返回带 seed_warning
 const REBUILD_LOG = CFG.rebuildLog || path.join(DATA_DIR, 'rebuild-network.log');
 
 const DB = openDb(path.join(DATA_DIR, 'archive.sqlite'), { allowExtension: true });
@@ -1132,6 +1134,7 @@ async function archiveAssociate(params) {
 
   let seedIds;
   let seedSim = null;
+  let seedWarn = null;
   if (Array.isArray(params.seeds) && params.seeds.length > 0) {
     seedIds = [...new Set(params.seeds.map(Number).filter((n) => Number.isFinite(n) && n > 0))].slice(0, seedLimit);
     seedIds = seedIds.filter((id) => evById.has(id));
@@ -1150,9 +1153,39 @@ async function archiveAssociate(params) {
       const score = 1 - row.distance;
       if (!scored.has(meta.event_id) || score > scored.get(meta.event_id)) scored.set(meta.event_id, score);
     }
-    const top = [...scored.entries()].sort((a, b) => b[1] - a[1]).slice(0, seedLimit);
-    seedIds = top.map(([id]) => id);
-    seedSim = new Map(top);
+    // MMR 多样性选种: 纯 top-4 会让种子挤在同一天/同一故事群, PPR 起点偏置; 确定性代码, 无 LLM
+    const pool = [...scored.entries()].sort((a, b) => b[1] - a[1]).slice(0, 12).map(([id, sim]) => ({ id, sim }));
+    const vecCache = new Map();
+    const wholeVec = (id) => {
+      if (!vecCache.has(id)) vecCache.set(id, readVecRow('vec_events', id * 1000));
+      return vecCache.get(id);
+    };
+    const pairSim = (a, b) => {
+      const va = wholeVec(a), vb = wholeVec(b);
+      if (!va || !vb || va.length !== vb.length) return 0;
+      let dot = 0;
+      for (let i = 0; i < va.length; i++) dot += va[i] * vb[i];
+      return dot;   // whole 向量已归一化, 点积即余弦
+    };
+    // 图内事件优先做种子（图外种子无法扩散, teleport 质量白白流失）
+    const inGraph = pool.filter((c) => adj.has(c.id));
+    const candidates = [...inGraph, ...pool.filter((c) => !adj.has(c.id))];
+    const picked = [];
+    while (picked.length < seedLimit && picked.length < candidates.length) {
+      const remaining = candidates.filter((c) => !picked.includes(c));
+      let best = null, bestVal = -Infinity;
+      for (const c of remaining) {
+        let maxSim = 0;
+        for (const s of picked) { const v = pairSim(c.id, s.id); if (v > maxSim) maxSim = v; }
+        const val = picked.length === 0 ? c.sim : SEED_MMR_LAMBDA * c.sim - (1 - SEED_MMR_LAMBDA) * maxSim;
+        if (val > bestVal) { bestVal = val; best = c; }
+      }
+      picked.push(best);
+    }
+    picked.sort((a, b) => b.sim - a.sim);   // 展示仍按 sim 降序
+    seedIds = picked.map((c) => c.id);
+    seedSim = new Map(picked.map((c) => [c.id, c.sim]));
+    if (picked[0] && picked[0].sim < SEED_SIM_FLOOR) seedWarn = `top 种子 sim=${picked[0].sim.toFixed(4)} 低于 ${SEED_SIM_FLOOR}——这段话可能没有真正命中记忆, 联想结果参考价值有限`;
   }
   if (seedIds.length === 0) throw new Error('没有语义命中的事件——换个说法, 或直接传 seeds');
 
@@ -1166,6 +1199,7 @@ async function archiveAssociate(params) {
   return {
     ok: true,
     seeds: seedIds.map((id) => ({ id, title: evById.get(id)?.title ?? `#${id}`, summary: evById.get(id)?.summary ?? null, ...(seedSim?.get(id) != null ? { sim: Math.round(seedSim.get(id) * 10000) / 10000 } : {}) })),
+    ...(seedWarn ? { seed_warning: seedWarn } : {}),
     k, matches: ranked.map(([id, score]) => {
       const ev = evById.get(id);
       const via = viaEdgeOf(id, r, adj, edgeInfo);
@@ -1692,7 +1726,7 @@ const MCP_TOOLS = [
   { name: 'archive_restore_network', description: '⚠️ 仅在 archive_rebuild_network 失败中途（网络半重建状态）时使用——把边回滚到上次 rebuild 之前。\n\n什么时候不要用：rebuild 成功之后（备份已删）；正常状态调它没有意义。', inputSchema: { type: 'object', properties: {} } },
   { name: 'archive_event_subgraph', description: '一次调用抽出一个事件周边的剪枝子图——不用再一跳一跳调 archive_event_graph 拼图。\n\n从 seed 出发按边权（因果3.0/语义1.5/同时段1.0）在 radius 跳内做最优扩展，最多 max_nodes 个节点；节点带故事群归属，边带类型/方向/理由/语义分数与 frag 证据（血缘原文片段）。\n\n什么时候用：\n  · 想看"这件事周围整片的结构"，而不只是一圈邻居\n  · 反思会话开头铺上下文——一个子图顶几十次逐跳调用\n  · seeds 传多个：把几个检索命中连成一片看\n\n想读节点全文用 archive_read_event；想沿因果走叙事链用 archive_causal_chain。', inputSchema: { type: 'object', properties: { seed: { type: 'number', description: '中心事件 id（seeds 传了可省）' }, seeds: { type: 'array', items: { type: 'number' }, description: '多个中心事件 id——把几片连起来看, 最多 10 个' }, radius: { type: 'number', description: '扩展几跳, 默认 2, 范围 1-3' }, max_nodes: { type: 'number', description: '最多带多少节点, 默认 24, 范围 5-40(超出的弱分支被剪掉)' }, edge_types: { type: 'array', items: { type: 'string', enum: ['causal', 'thematic', 'overlap'] }, description: '只看哪些边, 默认全要' }, include_summaries: { type: 'boolean', description: '已废弃: 节点现在始终带全文 summary, 参数仅为兼容保留' } } } },
   { name: 'archive_network_stats', description: '事件网络的全局结构一览：边数与类型分布 / 连接最多的枢纽事件 top10 / 跨故事群的桥边（群与群是靠哪些事件连起来的——叙事上最值钱的连接） / 割点（拿掉就会让网络断开的枢纽事件）。\n\n什么时候用：\n  · 会话开头想从高处看一眼"网长什么样了"\n  · 想找两个故事群之间的过渡事件\n  · 想找"抽掉就散"的关键事件\n\n逐事件全量明细走 REST /archive/events/network-stats；局部结构用 archive_event_subgraph。', inputSchema: { type: 'object', properties: {} } },
-  { name: 'archive_associate', description: '联想检索——给一段当下的话（或几个种子事件），在事件网做 Personalized PageRank 扩散：不只找"最像的卡"，而是"从最像的卡出发，整片网里哪里被牵动"。causal 边（权重 3.0）主导扩散方向，每条结果带 via——是被谁、用什么关系拉上来的。\n\n什么时候用：\n  · 用户说起过去的事，想看"这和网上哪些事件连在一起"——找关联而非相似，比 search_events 更适合\n  · 反思会话开头铺整片上下文\n  · 有明确种子时直接传 seeds 跳过语义步\n\n只想找相似事件用 archive_search_events。', inputSchema: { type: 'object', properties: { context: { type: 'string', description: '当下的话——向量化后命中的事件作种子（与 seeds 二选一）' }, seeds: { type: 'array', items: { type: 'number' }, description: '直接指定种子事件 id（最多 4 个），跳过语义步' }, k: { type: 'number', description: '返回数, 默认 8, 范围 1-20' }, edge_types: { type: 'array', items: { type: 'string', enum: ['causal', 'thematic', 'overlap'] }, description: '参与扩散的边型, 默认全部' } } } },
+  { name: 'archive_associate', description: '联想检索——给一段当下的话（或几个种子事件），在事件网做 Personalized PageRank 扩散：不只找"最像的卡"，而是"从最像的卡出发，整片网里哪里被牵动"。causal 边（权重 3.0）主导扩散方向，每条结果带 via——是被谁、用什么关系拉上来的。\n\n什么时候用：\n  · 用户说起过去的事，想看"这和网上哪些事件连在一起"——找关联而非相似，比 search_events 更适合\n  · 反思会话开头铺整片上下文\n  · 有明确种子时直接传 seeds 跳过语义步\n\n只想找相似事件用 archive_search_events。种子按 MMR 挑选（在整片网上铺开, 不挤在同一天）；返回若带 seed_warning, 说明这段话没有真正命中记忆——联想结果参考价值有限。', inputSchema: { type: 'object', properties: { context: { type: 'string', description: '当下的话——向量化后命中的事件作种子（与 seeds 二选一）' }, seeds: { type: 'array', items: { type: 'number' }, description: '直接指定种子事件 id（最多 4 个），跳过语义步' }, k: { type: 'number', description: '返回数, 默认 8, 范围 1-20' }, edge_types: { type: 'array', items: { type: 'string', enum: ['causal', 'thematic', 'overlap'] }, description: '参与扩散的边型, 默认全部' } } } },
   { name: 'archive_event_path', description: 'A→B 路径查询——"这两个事件是怎么连上的"。有界枚举简单路径（默认 ≤5 跳），按可靠性评分降序：Σ边权（causal 顺方向 ×1.2 / 逆 ×0.8，thematic 1.5，overlap 1.0）减每段 0.3 长度惩罚——短而强的链赢过长而弱的链。\n\n什么时候用：\n  · 两个事件相关但没有直连边，想看它们经由什么连起来（桥、枢纽会现形）\n  · 反思时想要"评分排序的候选路径集"而非单条贪心链\n\n1 跳邻居用 archive_event_graph；沿因果走叙事主线用 archive_causal_chain。', inputSchema: { type: 'object', properties: { from: { type: 'number', description: '起点事件 id' }, to: { type: 'number', description: '终点事件 id' }, k: { type: 'number', description: '返回几条路径, 默认 3, 范围 1-10' }, max_hops: { type: 'number', description: '最大跳数, 默认 5, 范围 2-6' }, edge_types: { type: 'array', items: { type: 'string', enum: ['causal', 'thematic', 'overlap'] }, description: '参与的边型, 默认全部' } }, required: ['from', 'to'] } },
   { name: 'archive_causal_probe', description: '给一个事件出一份"因果候选单"——机器遍历图找可能的原因/结果，并附上证据路径，由反思者（哥哥/助手/AI）判定。\n\n模式（mode）：\n  · cause —— 找"可能导致它"的候选（时间在前）\n  · effect —— 找"它可能导致"的候选（时间在后）\n  · both —— 两边都要\n  · remote —— 远端因果候选对：**跨故事群、无任何边、时间不重叠但间隔在因果走廊内（默认 7-90 天）**——hop1-3 的结构性盲区。不围绕单个事件，出的是"时序走廊里的远端对"（结构位/重要度/远而不隔排序），判读同样走 archive_causal_review，不需要 event_id\n\n候选分四层：\n  · hop1 promotion —— 已有 thematic/overlap 边 + 时间符合 → 考虑提升为因果\n  · hop2 two_hop —— X与W相近、W是Y的已知因果 → X可能是深层上游/下游\n  · hop3 community —— 同故事群但毫无边的弱线索\n  · hop4 remote —— 跨群·无边·时序走廊（mode=remote 专用）\n\n返回每个候选的评分、路径和一句为什么。判定用 archive_causal_review（link/reject/done/defer）。', inputSchema: { type: 'object', properties: { event_id: { type: 'number', description: '要出题的事件 id（remote 模式不需要）' }, mode: { type: 'string', enum: ['cause', 'effect', 'both', 'remote'], description: 'remote=远端跨群因果候选(无需 event_id); 其余默认 both' }, limit: { type: 'number', description: '每侧候选数上限, 默认 5, 最大 10' }, detail: { type: 'boolean', description: '已废弃: 候选摘要现在始终是全文, 参数仅为兼容保留' }, gap_min: { type: 'number', description: 'remote: 走廊下限(天), 默认 7' }, gap_max: { type: 'number', description: 'remote: 走廊上限(天), 默认 90' } }, required: ['event_id'] } },
   { name: 'archive_causal_review', description: '因果反思循环的核心——把「没被解释的事件」和「它们的候选」一起端上来，反思者逐个判定：\n  · link —— 确认因果：创建 causal 边（方向=时间先后，可用 direction 覆盖），记一条判定\n  · reject —— 不是因果，记下，以后不再出这道题\n  · done —— 这件事已经解释清楚了，别再给它出题\n  · defer —— 现在说不准，N 天后再来（默认14天）\n\npresent 模式：按 importance 高→低、孤立度低→高排序，挑最值得反思的事件。候选分两侧（candidate_causes=疑似原因 / candidate_effects=疑似结果），各 1 个（单侧空时另一侧补足到 2）——link 时方向默认按时间推断（早→晚），与两侧一致，想覆盖再传 direction。\n判过的(reject/link/done/defer未到期)不会再出现。每条判定都留痕，decided_by 默认 "ai"——哥哥可以写 "gege"。\n\n批量判定传 verdicts（一次事务判完）；present 可用 focus 换队列（effects=无果死胡同）；link 的返回带 echo——新边两侧一跳的因果邻域，看判定让链长成了什么样。\n\n候选不限于 probe 的近端题——probe mode=\'remote\' 端上来的**跨故事群远端对**（晚事件=event_id，早事件=candidate_id，方向默认早→晚）用完全相同的方式判定；判过的远端对同样永久沉底。', inputSchema: { type: 'object', properties: { present: { type: 'boolean', description: 'true=只端菜(看下一批要判什么), 不写任何判定。默认 true。' }, event_id: { type: 'number', description: 'verdict 模式下必填: 判哪个事件' }, candidate_id: { type: 'number', description: 'verdict 模式下必填: 判哪个候选(link/reject 用)' }, verdict: { type: 'string', enum: ['link', 'reject', 'done', 'defer'], description: 'link=确认因果建边 / reject=否决 / done=该事件无需再解释 / defer=缓几天再说' }, direction: { type: 'string', enum: ['a→b', 'b→a'], description: 'link 时可选: 覆盖时间推断的方向。"a→b"=candidate 是 event 的原因' }, reason: { type: 'string', description: 'link/reject 建议写: 因果理由 / 否决理由' }, defer_days: { type: 'number', description: 'defer 时: 多少天后重新出题, 默认 14' }, decided_by: { type: 'string', description: '判定者签名, 默认 "ai"。哥哥用 "gege"。' }, focus: { type: 'string', enum: ['causes', 'effects', 'auto'], description: 'present 模式选队列: causes=无因事件(默认) / effects=无果事件(叙事死胡同) / auto=两者并集' }, detail: { type: 'boolean', description: '已废弃: 候选摘要现在始终是全文, 参数仅为兼容保留' }, verdicts: { type: 'array', description: '批量判定: [{event_id, candidate_id?, verdict, direction?, reason?, defer_days?}] 一次事务判完(≤50), 与单条 verdict 参数互斥', items: { type: 'object', properties: { event_id: { type: 'number' }, candidate_id: { type: 'number' }, verdict: { type: 'string', enum: ['link', 'reject', 'done', 'defer'] }, direction: { type: 'string', enum: ['a→b', 'b→a'] }, reason: { type: 'string' }, defer_days: { type: 'number' } }, required: ['event_id', 'verdict'] } } }, required: [] } },
